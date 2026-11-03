@@ -132,3 +132,7 @@ Calculation fixtures in `test/geographiclib_fixtures.json` were generated indepe
 ### Device acceptance still required
 
 On **both a physical Android and iOS device**, check satellite/hybrid/standard tiles with restricted keys; place search; location allowed/denied; pan/zoom/rotate; viewport starter rectangle; live drag polygon and totals; insertion/deletion/manual coordinates; concave and invalid boundaries; multiple named areas and open distance paths; edit/rename/delete each layer; save and reopen a property with all of its shapes; multi-property save/rename/delete; force quit and relaunch; recovered drafts; save/discard prompts; light/dark mode; small-phone landscape and tablet layouts. Compare a known parcel with surveyed reference coordinates. SDK compilation and automated tests cannot establish imagery, permissions or gesture correctness on a real device.
+
+### App icon
+
+The iOS and Android launcher icons use `LandO Property Parcel Icon.png` in the project root. Native icon sizes are checked in and included in both debug and release builds. After replacing the source PNG, run `python3 tools/generate_app_icons.py` on macOS to regenerate the iPhone, iPad, App Store and Android assets.
