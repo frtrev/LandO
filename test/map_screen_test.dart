@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart' show GoogleMap;
 import 'package:google_maps_flutter_platform_interface/google_maps_flutter_platform_interface.dart';
 import 'package:lando/models/property.dart';
 import 'package:lando/screens/map_screen.dart';
@@ -133,6 +134,170 @@ void main() {
       await tester.tap(find.byTooltip('Settings'));
       await tester.pumpAndSettle();
       expect(find.text('Map & preferences'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+      await tester.binding.setSurfaceSize(null);
+    },
+  );
+  testWidgets(
+    'areas and multiple measurement paths can be drawn, saved and reopened',
+    (tester) async {
+      final map = MapHarness();
+      GoogleMapsFlutterPlatform.instance = map;
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(
+            const MethodChannel('flutter.baseflow.com/geolocator'),
+            (call) async => 0,
+          );
+      final repo = MemoryRepository();
+      final now = DateTime.now();
+      await repo.save(
+        Property(
+          id: 'layers-test',
+          name: 'My land',
+          points: [
+            const BoundaryPoint(
+              id: 'a',
+              label: 'A',
+              latitude: 30,
+              longitude: -98,
+            ),
+            const BoundaryPoint(
+              id: 'b',
+              label: 'B',
+              latitude: 30,
+              longitude: -97.999,
+            ),
+            const BoundaryPoint(
+              id: 'c',
+              label: 'C',
+              latitude: 30.001,
+              longitude: -97.999,
+            ),
+            const BoundaryPoint(
+              id: 'd',
+              label: 'D',
+              latitude: 30.001,
+              longitude: -98,
+            ),
+          ],
+          latitude: 30,
+          longitude: -98,
+          created: now,
+          modified: now,
+        ),
+      );
+      await tester.binding.setSurfaceSize(const Size(390, 844));
+      Future<void> mount() async {
+        await tester.pumpWidget(
+          MaterialApp(
+            home: MapScreen(
+              repository: repo,
+              themeMode: ThemeMode.light,
+              onTheme: (_) {},
+            ),
+          ),
+        );
+        await tester.runAsync(() async {
+          await Future<void>.delayed(const Duration(milliseconds: 100));
+        });
+        await tester.pumpAndSettle();
+      }
+
+      Future<void> animateModal() async {
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 400));
+      }
+
+      Future<void> nameShape(String name) async {
+        await tester.enterText(find.byType(TextField), name);
+        await tester.tap(
+          find.descendant(
+            of: find.byType(AlertDialog),
+            matching: find.widgetWithText(FilledButton, 'Done'),
+          ),
+        );
+        await tester.pumpAndSettle();
+      }
+
+      Future<void> tapMap(double lat, double lon) async {
+        tester.widget<GoogleMap>(find.byType(GoogleMap)).onTap!(
+          LatLng(lat, lon),
+        );
+        await tester.pumpAndSettle();
+      }
+
+      await mount();
+      await tester.tap(find.text('Layers'));
+      await animateModal();
+      await tester.tap(find.text('Add area'));
+      await animateModal();
+      await nameShape('Garden');
+      expect(
+        tester
+            .widget<IconButton>(
+              find.byWidgetPredicate(
+                (w) => w is IconButton && w.tooltip == 'Save property',
+              ),
+            )
+            .onPressed,
+        isNull,
+      );
+      await tapMap(30.0001, -97.9999);
+      await tapMap(30.0001, -97.9997);
+      await tapMap(30.0003, -97.9999);
+      expect(map.objects.polygons, hasLength(2));
+      expect(
+        tester
+            .widget<IconButton>(
+              find.byWidgetPredicate(
+                (w) => w is IconButton && w.tooltip == 'Save property',
+              ),
+            )
+            .onPressed,
+        isNotNull,
+      );
+      await tester.tap(find.widgetWithText(FilledButton, 'Done'));
+      await tester.pumpAndSettle();
+      for (final name in ['Driveway', 'Fence']) {
+        await tester.tap(find.text('Measure'));
+        await animateModal();
+        await nameShape(name);
+        await tapMap(30, -98);
+        await tapMap(30.0005, -98);
+        expect(map.objects.polylines.last.points, hasLength(2));
+        await tester.tap(find.widgetWithText(FilledButton, 'Done'));
+        await tester.pumpAndSettle();
+      }
+      expect(map.objects.polylines, hasLength(2));
+      await tester.tap(find.byTooltip('Save property'));
+      await tester.pumpAndSettle();
+      expect(repo.properties['layers-test']!.layers.map((l) => l.name), [
+        'Garden',
+        'Driveway',
+        'Fence',
+      ]);
+      await tester.pumpWidget(const SizedBox());
+      await mount();
+      expect(map.objects.polygons, hasLength(2));
+      expect(map.objects.polylines, hasLength(2));
+      await tester.tap(find.text('Layers'));
+      await animateModal();
+      expect(find.text('Garden'), findsOneWidget);
+      expect(find.text('Driveway'), findsOneWidget);
+      await tester.drag(find.text('Garden'), const Offset(0, -180));
+      await animateModal();
+      expect(find.text('Fence'), findsOneWidget);
+      await tester.ensureVisible(find.text('Driveway'));
+      await animateModal();
+      await tester.tap(find.text('Driveway'));
+      await tester.pumpAndSettle();
+      expect(map.objects.markers, hasLength(2));
+      map.objects.markers.first.onDragEnd!(const LatLng(30.0001, -98));
+      await tester.pumpAndSettle();
+      expect(find.text('Driveway'), findsOneWidget);
+      await tester.binding.setSurfaceSize(const Size(667, 375));
+      await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());
       await tester.binding.setSurfaceSize(null);

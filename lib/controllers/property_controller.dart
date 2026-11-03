@@ -14,6 +14,7 @@ class PropertyController extends ChangeNotifier {
   GeometryResult result = const GeometryResult();
   bool dirty = false;
   bool saving = false;
+  int _revision = 0;
   String? storageError;
   Timer? _draftTimer;
   Future<void> _writes = Future.value();
@@ -40,7 +41,54 @@ class PropertyController extends ChangeNotifier {
     super.dispose();
   }
 
-  final List<BoundaryPoint> measurement = [];
+  String? activeLayerId;
+  PropertyLayer? get activeLayer =>
+      property?.layers.where((layer) => layer.id == activeLayerId).firstOrNull;
+  final Map<String, GeometryResult> areaResults = {};
+  final Map<String, double> pathLengths = {};
+  final Map<String, List<String>> layerErrors = {};
+  bool get canSave =>
+      property != null &&
+      result.valid &&
+      layerErrors.values.every((errors) => errors.isEmpty);
+  void _calculateLayers() {
+    areaResults.clear();
+    pathLengths.clear();
+    layerErrors.clear();
+    for (final layer in property?.layers ?? <PropertyLayer>[]) {
+      if (layer.kind == LayerKind.area) {
+        final r = geometry.calculate(layer.points);
+        areaResults[layer.id] = r;
+        layerErrors[layer.id] = r.errors;
+      } else {
+        final errors = <String>[];
+        if (layer.points.length < 2) {
+          errors.add('Add at least two points to this measurement.');
+        }
+        try {
+          if (layer.points.any((p) => !geometry.validCoordinate(p))) {
+            errors.add('Invalid path coordinates.');
+          }
+          if (errors.isEmpty) {
+            for (var i = 1; i < layer.points.length; i++) {
+              if (geometry.distance(layer.points[i - 1], layer.points[i]) <
+                  .001) {
+                errors.add('Consecutive path points must be different.');
+                break;
+              }
+            }
+          }
+          if (errors.isEmpty) {
+            pathLengths[layer.id] = geometry.pathLength(layer.points);
+          }
+        } on Object {
+          errors.add('This path cannot be calculated. Check its coordinates.');
+        }
+        layerErrors[layer.id] = errors;
+      }
+    }
+  }
+
   PropertyController(this.repository, {GeometryService? geometry})
     : geometry = geometry ?? GeometryService();
   Future<void> restore() async {
@@ -66,7 +114,7 @@ class PropertyController extends ChangeNotifier {
     await repository.setPreference('lastProperty', p.id);
     property = p;
     dirty = false;
-    measurement.clear();
+    activeLayerId = null;
     _calculate();
   }
 
@@ -88,11 +136,12 @@ class PropertyController extends ChangeNotifier {
       created: now,
       modified: now,
     );
-    measurement.clear();
+    activeLayerId = null;
     changed();
   }
 
   void changed() {
+    _revision++;
     dirty = true;
     _calculate();
     _draftTimer?.cancel();
@@ -103,6 +152,7 @@ class PropertyController extends ChangeNotifier {
     result = property == null
         ? const GeometryResult()
         : geometry.calculate(property!.points);
+    _calculateLayers();
     notifyListeners();
   }
 
@@ -134,50 +184,135 @@ class PropertyController extends ChangeNotifier {
   }
 
   Future<void> save() async {
-    if (property == null || !result.valid || saving) {
+    if (property == null || !canSave || saving) {
       return;
     }
     saving = true;
     notifyListeners();
     try {
       property!.modified = DateTime.now().toUtc();
-      await repository.save(property!);
-      await discardDraft();
-      dirty = false;
+      final revision = _revision;
+      final snapshot = Property.fromJson(property!.toJson());
+      await repository.save(snapshot);
+      if (_revision == revision && property?.id == snapshot.id) {
+        await discardDraft();
+        dirty = false;
+      } else {
+        await persistDraft();
+      }
     } finally {
       saving = false;
       notifyListeners();
     }
   }
 
-  void addMeasurement(double lat, double lon) {
-    measurement.add(
+  PropertyLayer startLayer(LayerKind kind, String name) {
+    if (property == null) {
+      throw StateError('Open a property first.');
+    }
+    final layer = PropertyLayer(id: newId(), kind: kind, name: name.trim());
+    property!.layers.add(layer);
+    activeLayerId = layer.id;
+    changed();
+    return layer;
+  }
+
+  void selectLayer(String id) {
+    if (!property!.layers.any((layer) => layer.id == id)) {
+      throw StateError('Layer not found');
+    }
+    activeLayerId = id;
+    notifyListeners();
+  }
+
+  void finishLayer() {
+    activeLayerId = null;
+    notifyListeners();
+  }
+
+  void renameLayer(String id, String name) {
+    if (name.trim().isEmpty) {
+      return;
+    }
+    property!.layers.firstWhere((layer) => layer.id == id).name = name.trim();
+    changed();
+  }
+
+  void deleteLayer(String id) {
+    property!.layers.removeWhere((layer) => layer.id == id);
+    if (activeLayerId == id) {
+      activeLayerId = null;
+    }
+    changed();
+  }
+
+  void addLayerPoint(double lat, double lon) {
+    final layer = activeLayer;
+    if (layer == null) {
+      return;
+    }
+    layer.points.add(
       BoundaryPoint(
         id: newId(),
-        label: '${measurement.length + 1}',
+        label: pointLabel(layer.nextLabel++),
         latitude: lat,
         longitude: lon,
       ),
     );
-    notifyListeners();
+    changed();
   }
 
-  void clearMeasurement() {
-    measurement.clear();
-    notifyListeners();
+  void moveLayerPoint(String layerId, String pointId, double lat, double lon) {
+    final layer = property!.layers.firstWhere((layer) => layer.id == layerId);
+    layer.points = layer.points
+        .map((p) => p.id == pointId ? p.move(lat, lon) : p)
+        .toList();
+    changed();
   }
 
-  void undoMeasurement() {
-    if (measurement.isNotEmpty) {
-      measurement.removeLast();
-      notifyListeners();
+  void removeLayerPoint(String layerId, String pointId) {
+    property!.layers
+        .firstWhere((layer) => layer.id == layerId)
+        .points
+        .removeWhere((p) => p.id == pointId);
+    changed();
+  }
+
+  void insertLayerPoint(String layerId, int index) {
+    final layer = property!.layers.firstWhere((layer) => layer.id == layerId);
+    if (layer.points.length < 2 ||
+        (layer.kind == LayerKind.distance &&
+            index == layer.points.length - 1)) {
+      return;
+    }
+    layer.points.insert(
+      index + 1,
+      geometry.midpoint(
+        layer.points[index],
+        layer.points[(index + 1) % layer.points.length],
+        label: pointLabel(layer.nextLabel++),
+      ),
+    );
+    changed();
+  }
+
+  void clearLayer() {
+    activeLayer?.points.clear();
+    changed();
+  }
+
+  void undoLayerPoint() {
+    final layer = activeLayer;
+    if (layer != null && layer.points.isNotEmpty) {
+      layer.points.removeLast();
+      changed();
     }
   }
 
   void close() {
     property = null;
     dirty = false;
-    measurement.clear();
+    activeLayerId = null;
     _calculate();
   }
 }

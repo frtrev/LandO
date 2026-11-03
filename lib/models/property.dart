@@ -43,11 +43,46 @@ String pointLabel(int index) {
   return label;
 }
 
+enum LayerKind { area, distance }
+
+/// A named, ordered polygon or open path belonging to one property.
+class PropertyLayer {
+  final String id;
+  final LayerKind kind;
+  String name;
+  List<BoundaryPoint> points;
+  int nextLabel;
+  PropertyLayer({
+    required this.id,
+    required this.kind,
+    required this.name,
+    List<BoundaryPoint>? points,
+    this.nextLabel = 0,
+  }) : points = points ?? [];
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'kind': kind.name,
+    'name': name,
+    'points': points.map((p) => p.toJson()).toList(),
+    'nextLabel': nextLabel,
+  };
+  factory PropertyLayer.fromJson(Map<String, dynamic> j) => PropertyLayer(
+    id: j['id'] as String,
+    kind: LayerKind.values.byName(j['kind'] as String),
+    name: j['name'] as String,
+    points: (j['points'] as List)
+        .map((p) => BoundaryPoint.fromJson(Map<String, dynamic>.from(p)))
+        .toList(),
+    nextLabel: j['nextLabel'] as int,
+  );
+}
+
 class Property {
   final String id;
   String name;
   String description;
   List<BoundaryPoint> points;
+  final List<PropertyLayer> layers;
   double latitude;
   double longitude;
   double zoom;
@@ -71,11 +106,13 @@ class Property {
     required this.created,
     required this.modified,
     this.nextLabel = 4,
-  });
+    List<PropertyLayer>? layers,
+  }) : layers = layers ?? [];
   Map<String, dynamic> toJson() => {
     'id': id,
     'name': name,
     'description': description,
+    'layers': layers.map((layer) => layer.toJson()).toList(),
     'points': points.map((p) => p.toJson()).toList(),
     'latitude': latitude,
     'longitude': longitude,
@@ -91,6 +128,11 @@ class Property {
     id: j['id'] as String,
     name: j['name'] as String,
     description: j['description'] as String,
+    layers: ((j['layers'] as List?) ?? [])
+        .map(
+          (layer) => PropertyLayer.fromJson(Map<String, dynamic>.from(layer)),
+        )
+        .toList(),
     points: (j['points'] as List)
         .map((p) => BoundaryPoint.fromJson(Map<String, dynamic>.from(p)))
         .toList(),

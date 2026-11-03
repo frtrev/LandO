@@ -9,6 +9,8 @@ import '../controllers/property_controller.dart';
 import '../models/property.dart';
 import '../services/place_search.dart';
 import '../services/property_repository.dart';
+import '../widgets/layer_editor_panel.dart';
+import '../widgets/property_layers_sheet.dart';
 
 class MapScreen extends StatefulWidget {
   final PropertyRepository repository;
@@ -36,11 +38,11 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
   );
   MapType mapType = MapType.satellite;
   bool editing = true,
-      measuring = false,
       locationGranted = false,
       details = false,
       busy = false,
       allowPop = false;
+  bool get measuring => state.activeLayer != null;
   String length(double meters) => state.property?.metric == true
       ? '${meters.toStringAsFixed(1)} m'
       : '${(meters / 0.3048).toStringAsFixed(1)} ft';
@@ -213,11 +215,11 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
       context: context,
       builder: (c) => AlertDialog(
         scrollable: true,
-        title: const Text('Unsaved boundary changes'),
+        title: const Text('Unsaved property changes'),
         content: Text(
-          state.result.valid
+          state.canSave
               ? 'Save your changes before continuing?'
-              : 'This boundary is invalid. Return to fix it, or discard these changes.',
+              : 'Finish or fix invalid boundaries, areas or measurements, or discard these changes.',
         ),
         actions: [
           TextButton(
@@ -228,7 +230,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
             onPressed: () => Navigator.pop(c, 'discard'),
             child: const Text('Discard'),
           ),
-          if (state.result.valid)
+          if (state.canSave)
             FilledButton(
               onPressed: () => Navigator.pop(c, 'save'),
               child: const Text('Save'),
@@ -357,7 +359,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
     );
     setState(() {
       editing = true;
-      measuring = false;
+      state.finishLayer();
     });
     message('Starter rectangle only. Drag each corner to map your boundary.');
   }
@@ -537,7 +539,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
     }
   }
 
-  Future<void> editPoint(BoundaryPoint point) async {
+  Future<void> editPoint(BoundaryPoint point, {String? layerId}) async {
     final lat = TextEditingController(text: point.latitude.toStringAsFixed(8));
     final lon = TextEditingController(text: point.longitude.toStringAsFixed(8));
     String? error;
@@ -546,7 +548,9 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
       builder: (c) => StatefulBuilder(
         builder: (c, update) => AlertDialog(
           scrollable: true,
-          title: Text('Boundary point ${point.label}'),
+          title: Text(
+            '${layerId == null ? 'Boundary' : 'Layer'} point ${point.label}',
+          ),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -579,10 +583,14 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
           ),
           actions: [
             TextButton(
-              onPressed: state.property!.points.length <= 3
+              onPressed: layerId == null && state.property!.points.length <= 3
                   ? null
                   : () {
-                      state.remove(point.id);
+                      if (layerId == null) {
+                        state.remove(point.id);
+                      } else {
+                        state.removeLayerPoint(layerId, point.id);
+                      }
                       Navigator.pop(c);
                     },
               child: const Text('Delete'),
@@ -604,7 +612,11 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                   update(() => error = 'Enter valid decimal coordinates.');
                   return;
                 }
-                state.move(point.id, a, b);
+                if (layerId == null) {
+                  state.move(point.id, a, b);
+                } else {
+                  state.moveLayerPoint(layerId, point.id, a, b);
+                }
                 Navigator.pop(c);
               },
               child: const Text('Apply'),
@@ -620,11 +632,20 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
   }
 
   Future<void> insertPoint() async {
-    final p = state.property;
-    if (p == null) {
+    final property = state.property;
+    if (property == null) {
       message('Create or open a property first.');
       return;
     }
+    final layer = state.activeLayer;
+    final points = layer?.points ?? property.points;
+    if (points.length < 2) {
+      message('Tap the map to add at least two points first.');
+      return;
+    }
+    final edges = layer?.kind == LayerKind.distance
+        ? points.length - 1
+        : points.length;
     final index = await showModalBottomSheet<int>(
       context: context,
       showDragHandle: true,
@@ -634,10 +655,10 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
           children: [
             const ListTile(title: Text('Insert a point between…')),
             ...List.generate(
-              p.points.length,
+              edges,
               (i) => ListTile(
                 title: Text(
-                  '${p.points[i].label} → ${p.points[(i + 1) % p.points.length].label}',
+                  '${points[i].label} → ${points[(i + 1) % points.length].label}',
                 ),
                 subtitle: const Text(
                   'Starts at the geodesic midpoint; drag to adjust',
@@ -649,12 +670,14 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
         ),
       ),
     );
-    if (index != null) {
+    if (index == null) {
+      return;
+    }
+    if (layer != null) {
+      state.insertLayerPoint(layer.id, index);
+    } else {
       state.insertAfter(index);
-      setState(() {
-        editing = true;
-        measuring = false;
-      });
+      setState(() => editing = true);
     }
   }
 
@@ -771,6 +794,19 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                 ),
               ],
             ),
+            if (p.layers.isNotEmpty)
+              TextButton.icon(
+                onPressed: () => safe(showLayers),
+                icon: const Icon(Icons.layers_outlined),
+                label: Text(
+                  '${p.layers.where((l) => l.kind == LayerKind.area).length} areas · ${p.layers.where((l) => l.kind == LayerKind.distance).length} measurements',
+                ),
+              ),
+            if (state.layerErrors.values.any((errors) => errors.isNotEmpty))
+              Text(
+                'Finish or remove invalid areas and measurements before saving.',
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
             if (!r.valid)
               Text(
                 r.errors.join('\n'),
@@ -933,7 +969,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
             if (p != null)
               IconButton(
                 tooltip: 'Save property',
-                onPressed: busy || state.saving || !state.result.valid
+                onPressed: busy || state.saving || !state.canSave
                     ? null
                     : () => safe(save),
                 icon: Icon(
@@ -949,6 +985,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
         ),
         body: LayoutBuilder(
           builder: (context, constraints) => Stack(
+            fit: StackFit.expand,
             children: [
               GoogleMap(
                 initialCameraPosition: camera,
@@ -973,82 +1010,123 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                   top: 12,
                 ),
                 onTap: (point) {
-                  if (measuring) {
-                    state.addMeasurement(point.latitude, point.longitude);
+                  if (measuring && !busy) {
+                    state.addLayerPoint(point.latitude, point.longitude);
                   }
                 },
                 markers: {
-                  for (final point in points)
-                    Marker(
-                      markerId: MarkerId(point.id),
-                      position: ll(point),
-                      draggable: editing && !measuring && !busy,
-                      zIndexInt: 2,
-                      anchor: const Offset(.5, .5),
-                      icon:
-                          markerIcons[point.label] ??
-                          BitmapDescriptor.defaultMarkerWithHue(
-                            BitmapDescriptor.hueGreen,
-                          ),
-                      infoWindow: InfoWindow(
-                        title: point.label,
-                        snippet:
-                            '${point.latitude.toStringAsFixed(6)}, ${point.longitude.toStringAsFixed(6)}',
-                        onTap: () => editPoint(point),
-                      ),
-                      onTap: () {
-                        if (!measuring) {
-                          editPoint(point);
-                        }
-                      },
-                      onDrag: (position) => state.move(
-                        point.id,
-                        position.latitude,
-                        position.longitude,
-                      ),
-                      onDragEnd: (position) => state.move(
-                        point.id,
-                        position.latitude,
-                        position.longitude,
-                      ),
-                    ),
-                  for (final point in state.measurement)
-                    Marker(
-                      markerId: MarkerId('measure-${point.id}'),
-                      position: ll(point),
-                      icon: BitmapDescriptor.defaultMarkerWithHue(
-                        BitmapDescriptor.hueAzure,
-                      ),
-                      infoWindow: InfoWindow(title: 'Measure ${point.label}'),
-                    ),
-                },
-                polygons: points.length < 3
-                    ? {}
-                    : {
-                        Polygon(
-                          polygonId: const PolygonId('property'),
-                          points: points.map(ll).toList(),
-                          geodesic: true,
-                          strokeWidth: 3,
-                          strokeColor: state.result.valid
-                              ? const Color(0xffa5ff59)
-                              : Colors.redAccent,
-                          fillColor:
-                              (state.result.valid
-                                      ? Colors.greenAccent
-                                      : Colors.red)
-                                  .withValues(alpha: .18),
+                  if (!measuring)
+                    for (final point in points)
+                      Marker(
+                        markerId: MarkerId(point.id),
+                        position: ll(point),
+                        draggable: editing && !measuring && !busy,
+                        zIndexInt: 2,
+                        anchor: const Offset(.5, .5),
+                        icon:
+                            markerIcons[point.label] ??
+                            BitmapDescriptor.defaultMarkerWithHue(
+                              BitmapDescriptor.hueGreen,
+                            ),
+                        infoWindow: InfoWindow(
+                          title: point.label,
+                          snippet:
+                              '${point.latitude.toStringAsFixed(6)}, ${point.longitude.toStringAsFixed(6)}',
+                          onTap: () => editPoint(point),
                         ),
-                      },
-                polylines: {
-                  if (state.measurement.length >= 2)
-                    Polyline(
-                      polylineId: const PolylineId('measurement'),
-                      points: state.measurement.map(ll).toList(),
-                      color: Colors.lightBlueAccent,
-                      width: 4,
+                        onTap: () {
+                          if (!measuring) {
+                            editPoint(point);
+                          }
+                        },
+                        onDrag: (position) => state.move(
+                          point.id,
+                          position.latitude,
+                          position.longitude,
+                        ),
+                        onDragEnd: (position) => state.move(
+                          point.id,
+                          position.latitude,
+                          position.longitude,
+                        ),
+                      ),
+                  if (state.activeLayer != null)
+                    for (final point in state.activeLayer!.points)
+                      Marker(
+                        markerId: MarkerId('layer-${point.id}'),
+                        position: ll(point),
+                        draggable: !busy,
+                        zIndexInt: 3,
+                        icon: BitmapDescriptor.defaultMarkerWithHue(
+                          state.activeLayer!.kind == LayerKind.area
+                              ? BitmapDescriptor.hueOrange
+                              : BitmapDescriptor.hueAzure,
+                        ),
+                        infoWindow: InfoWindow(title: point.label),
+                        onTap: () =>
+                            editPoint(point, layerId: state.activeLayer!.id),
+                        onDrag: (position) => state.moveLayerPoint(
+                          state.activeLayer!.id,
+                          point.id,
+                          position.latitude,
+                          position.longitude,
+                        ),
+                        onDragEnd: (position) => state.moveLayerPoint(
+                          state.activeLayer!.id,
+                          point.id,
+                          position.latitude,
+                          position.longitude,
+                        ),
+                      ),
+                },
+                polygons: {
+                  if (points.length >= 3)
+                    Polygon(
+                      polygonId: const PolygonId('property'),
+                      points: points.map(ll).toList(),
                       geodesic: true,
+                      strokeWidth: 3,
+                      strokeColor: state.result.valid
+                          ? const Color(0xffa5ff59)
+                          : Colors.redAccent,
+                      fillColor:
+                          (state.result.valid ? Colors.greenAccent : Colors.red)
+                              .withValues(alpha: .18),
                     ),
+                  for (final layer in p?.layers ?? <PropertyLayer>[])
+                    if (layer.kind == LayerKind.area &&
+                        layer.points.length >= 3)
+                      Polygon(
+                        polygonId: PolygonId(layer.id),
+                        points: layer.points.map(ll).toList(),
+                        geodesic: true,
+                        strokeWidth: state.activeLayerId == layer.id ? 4 : 2,
+                        strokeColor: state.layerErrors[layer.id]!.isEmpty
+                            ? Colors.orangeAccent
+                            : Colors.redAccent,
+                        fillColor: Colors.orange.withValues(alpha: .22),
+                        zIndex: 1,
+                        consumeTapEvents: !measuring,
+                        onTap: () => state.selectLayer(layer.id),
+                      ),
+                },
+                polylines: {
+                  for (final layer in p?.layers ?? <PropertyLayer>[])
+                    if (layer.points.length >= 2 &&
+                        (layer.kind == LayerKind.distance ||
+                            layer.points.length < 3))
+                      Polyline(
+                        polylineId: PolylineId(layer.id),
+                        points: layer.points.map(ll).toList(),
+                        geodesic: true,
+                        width: state.activeLayerId == layer.id ? 5 : 3,
+                        color: layer.kind == LayerKind.area
+                            ? Colors.orangeAccent
+                            : Colors.lightBlueAccent,
+                        zIndex: 2,
+                        consumeTapEvents: !measuring,
+                        onTap: () => state.selectLayer(layer.id),
+                      ),
                 },
               ),
               Positioned(
@@ -1092,54 +1170,29 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          if (measuring)
-                            Card(
-                              child: Padding(
-                                padding: const EdgeInsets.all(12),
-                                child: Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Text(
-                                      'Distance measurement · ${state.measurement.length} points',
-                                      style: Theme.of(
-                                        context,
-                                      ).textTheme.titleSmall,
-                                    ),
-                                    Text(
-                                      measurementText(),
-                                      style: Theme.of(
-                                        context,
-                                      ).textTheme.titleLarge,
-                                    ),
-                                    const Text(
-                                      'Tap the map to extend this independent path.',
-                                    ),
-                                    Row(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.center,
-                                      children: [
-                                        TextButton(
-                                          onPressed: state.undoMeasurement,
-                                          child: const Text('Undo'),
-                                        ),
-                                        TextButton(
-                                          onPressed: state.clearMeasurement,
-                                          child: const Text('Clear'),
-                                        ),
-                                        TextButton(
-                                          onPressed: () =>
-                                              setState(() => measuring = false),
-                                          child: const Text('Done'),
-                                        ),
-                                      ],
-                                    ),
-                                  ],
-                                ),
+                          if (state.activeLayer != null)
+                            LayerEditorPanel(
+                              layer: state.activeLayer!,
+                              measurement: layerMeasurement(state.activeLayer!),
+                              errors:
+                                  state.layerErrors[state.activeLayerId] ?? [],
+                              onUndo: state.undoLayerPoint,
+                              onClear: state.clearLayer,
+                              onDone: state.finishLayer,
+                              onDelete: () =>
+                                  safe(() => deleteLayer(state.activeLayer!)),
+                              onEditPoint: (point) => editPoint(
+                                point,
+                                layerId: state.activeLayerId,
+                              ),
+                              onInsertPoint: (index) => state.insertLayerPoint(
+                                state.activeLayerId!,
+                                index,
                               ),
                             ),
-                          if (p != null)
+                          if (p != null && !measuring)
                             summary()
-                          else
+                          else if (p == null)
                             Card(
                               child: Padding(
                                 padding: const EdgeInsets.all(20),
@@ -1195,10 +1248,10 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                   p == null
                       ? null
                       : () => setState(() {
-                          editing = !editing;
-                          measuring = false;
+                          editing = measuring ? true : !editing;
+                          state.finishLayer();
                         }),
-                  active: editing && p != null,
+                  active: editing && p != null && !measuring,
                 ),
                 tool(
                   Icons.add_location_alt_outlined,
@@ -1208,14 +1261,27 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                 tool(
                   Icons.straighten,
                   'Measure',
-                  () => setState(() => measuring = !measuring),
+                  p == null
+                      ? null
+                      : () => safe(() => startLayer(LayerKind.distance)),
+                  active: state.activeLayer?.kind == LayerKind.distance,
+                ),
+                tool(
+                  Icons.layers_outlined,
+                  'Layers',
+                  p == null ? null : () => safe(showLayers),
                   active: measuring,
                 ),
                 tool(
                   Icons.info_outline,
                   'Details',
-                  p == null ? null : () => setState(() => details = !details),
-                  active: details,
+                  p == null
+                      ? null
+                      : () => setState(() {
+                          details = !details;
+                          state.finishLayer();
+                        }),
+                  active: details && !measuring,
                 ),
               ],
             ),
@@ -1225,11 +1291,113 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
     );
   }
 
-  String measurementText() {
-    try {
-      return length(state.geometry.pathLength(state.measurement));
-    } catch (_) {
-      return 'Path cannot be calculated';
+  String layerMeasurement(PropertyLayer layer) {
+    if ((state.layerErrors[layer.id] ?? []).isNotEmpty) {
+      return layer.kind == LayerKind.area
+          ? 'Area not yet valid'
+          : 'Path not yet valid';
+    }
+    if (layer.kind == LayerKind.distance) {
+      return length(state.pathLengths[layer.id]!);
+    }
+    final area = state.areaResults[layer.id]!;
+    return state.property!.metric
+        ? '${area.squareMeters!.toStringAsFixed(1)} m² · ${area.hectares!.toStringAsFixed(3)} ha\n${length(area.perimeterMeters!)} perimeter'
+        : '${area.acres!.toStringAsFixed(3)} acres · ${area.squareFeet!.toStringAsFixed(0)} sq ft\n${length(area.perimeterMeters!)} perimeter';
+  }
+
+  Future<void> startLayer(LayerKind kind) async {
+    if (state.property == null || !mounted) {
+      return;
+    }
+    final name = await textDialog(
+      kind == LayerKind.area ? 'Name this area' : 'Name this measurement',
+      kind == LayerKind.area
+          ? 'Area ${state.property!.layers.where((l) => l.kind == kind).length + 1}'
+          : 'Measurement ${state.property!.layers.where((l) => l.kind == kind).length + 1}',
+    );
+    if (name == null || !mounted) {
+      return;
+    }
+    state.startLayer(kind, name);
+  }
+
+  Future<void> deleteLayer(PropertyLayer layer) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: Text('Delete ${layer.name}?'),
+        content: const Text(
+          'This removes the shape from this property. Save the property to keep this change.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(c, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(c, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirm == true) {
+      state.deleteLayer(layer.id);
+    }
+  }
+
+  Future<void> showLayers() async {
+    if (state.property == null) {
+      return;
+    }
+    final action =
+        await showModalBottomSheet<
+          ({String action, String? id, LayerKind? kind})
+        >(
+          context: context,
+          showDragHandle: true,
+          isScrollControlled: true,
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.sizeOf(context).height * .75,
+          ),
+          builder: (c) => PropertyLayersSheet(
+            controller: state,
+            measurement: layerMeasurement,
+            onCreate: (kind) =>
+                Navigator.pop(c, (action: 'create', id: null, kind: kind)),
+            onEdit: (layer) =>
+                Navigator.pop(c, (action: 'edit', id: layer.id, kind: null)),
+            onRename: (layer) =>
+                Navigator.pop(c, (action: 'rename', id: layer.id, kind: null)),
+            onDelete: (layer) =>
+                Navigator.pop(c, (action: 'delete', id: layer.id, kind: null)),
+          ),
+        );
+    if (action == null || !mounted) {
+      return;
+    }
+    if (action.action == 'create') {
+      await startLayer(action.kind!);
+      return;
+    }
+    final layer = state.property!.layers.firstWhere(
+      (layer) => layer.id == action.id,
+    );
+    if (action.action == 'edit') {
+      state.selectLayer(layer.id);
+    }
+    if (action.action == 'delete') {
+      await deleteLayer(layer);
+    }
+    if (action.action == 'rename') {
+      final name = await textDialog(
+        'Rename ${layer.kind == LayerKind.area ? 'area' : 'measurement'}',
+        layer.name,
+      );
+      if (name != null) {
+        state.renameLayer(layer.id, name);
+      }
     }
   }
 
