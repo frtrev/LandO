@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lando/controllers/property_chat_controller.dart';
 import 'package:lando/models/chat_message.dart';
@@ -77,7 +78,11 @@ void main() {
       expect(other.messages, isEmpty);
       other.dispose();
       await chat.clearHistory();
-      expect(await repo.preference('chat:${property.id}'), '[]');
+      final archive = jsonDecode(
+        (await repo.preference('chat:${property.id}'))!,
+      );
+      expect(archive['version'], 2);
+      expect(archive['conversations'].single['messages'], isEmpty);
       chat.dispose();
     },
   );

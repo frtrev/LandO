@@ -79,7 +79,7 @@ void main() {
       expect(chat.configured, false);
       await chat.send('Follow up?');
       expect(capture.calls, 1);
-      expect(chat.error, contains('OpenAI API key'));
+      expect(chat.error, contains('API key'));
       keys.key = 'sk-openai';
       await chat.reloadConfiguration();
       await chat.send('Follow up?');

@@ -66,12 +66,12 @@ class OpenAiAssistant implements LandoAssistant {
         if (response.statusCode != 200) {
           throw AssistantException(switch (response.statusCode) {
             401 || 403 =>
-              'OpenAI rejected this key or its permissions. Check your key in AI settings.',
+              'LandO could not authenticate. Check your API key and service access in AI settings.',
             429 =>
-              'OpenAI reports a rate or usage limit. Check your API balance and limits, then try again.',
+              'LandO reached a usage limit. Check your configured service usage and billing, then try again.',
             400 || 404 =>
-              'OpenAI could not use this model or request. Check the model and API access in AI settings.',
-            _ => 'OpenAI is unavailable right now. Please try again later.',
+              'LandO could not complete this request. Check your configuration and API access in AI settings.',
+            _ => 'LandO is unavailable right now. Please try again later.',
           });
         }
         final body = jsonDecode(response.body) as Map<String, dynamic>;
@@ -156,7 +156,7 @@ class OpenAiAssistant implements LandoAssistant {
       );
     } on http.ClientException {
       throw const AssistantException(
-        'Could not reach OpenAI. Check your connection and try again.',
+        'Could not reach LandO. Check your connection and try again.',
       );
     } on Object {
       throw const AssistantException(

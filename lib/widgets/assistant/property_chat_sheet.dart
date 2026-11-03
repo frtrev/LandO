@@ -6,6 +6,8 @@ import '../../services/assistant/openai_assistant.dart';
 import '../../services/property_repository.dart';
 import 'ai_settings_sheet.dart';
 import 'calculation_card.dart';
+import 'conversations_sheet.dart';
+import '../../models/chat_conversation.dart';
 
 class PropertyChatSheet extends StatefulWidget {
   final Property Function() currentProperty;
@@ -33,11 +35,12 @@ class _PropertyChatSheetState extends State<PropertyChatSheet> {
   );
   final input = TextEditingController();
   final scroll = ScrollController();
+  final Map<String, String> _drafts = {};
   @override
   void initState() {
     super.initState();
     chat.addListener(refresh);
-    chat.load();
+    chat.load().then((_) => showLatest());
   }
 
   void refresh() {
@@ -97,9 +100,9 @@ class _PropertyChatSheetState extends State<PropertyChatSheet> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (c) => AlertDialog(
-        title: const Text('Clear this property chat?'),
+        title: const Text('Clear this conversation?'),
         content: const Text(
-          'This removes its chat history from this device. Your property and saved shapes remain.',
+          'This clears only the current conversation. Your other conversations, property and saved shapes remain.',
         ),
         actions: [
           TextButton(
@@ -115,6 +118,151 @@ class _PropertyChatSheetState extends State<PropertyChatSheet> {
     );
     if (confirmed == true) {
       await chat.clearHistory();
+    }
+  }
+
+  void showLatest() {
+    if (!mounted) {
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && scroll.hasClients) {
+        scroll.jumpTo(scroll.position.maxScrollExtent);
+      }
+    });
+  }
+
+  Future<void> startConversation() async {
+    if (chat.unavailable) {
+      return;
+    }
+    _drafts[chat.activeConversation.id] = input.text;
+    if (await chat.newConversation() && mounted) {
+      input.clear();
+      FocusScope.of(context).unfocus();
+      showLatest();
+    }
+  }
+
+  Future<void> openConversation(String id) async {
+    if (chat.unavailable) {
+      return;
+    }
+    _drafts[chat.activeConversation.id] = input.text;
+    if (await chat.openConversation(id) && mounted) {
+      input.text = _drafts[id] ?? '';
+      FocusScope.of(context).unfocus();
+      showLatest();
+    }
+  }
+
+  Future<void> renameConversation(ChatConversation conversation) async {
+    final controller = TextEditingController(text: conversation.title);
+    final title = await showDialog<String>(
+      context: context,
+      builder: (c) => AlertDialog(
+        scrollable: true,
+        title: const Text('Rename conversation'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          maxLength: 100,
+          decoration: const InputDecoration(labelText: 'Conversation title'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(c),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              if (controller.text.trim().isNotEmpty) {
+                Navigator.pop(c, controller.text.trim());
+              }
+            },
+            child: const Text('Rename'),
+          ),
+        ],
+      ),
+    );
+    Future<void>.delayed(const Duration(seconds: 1), controller.dispose);
+    if (title != null) {
+      await chat.renameConversation(conversation.id, title);
+    }
+  }
+
+  Future<void> deleteConversation(ChatConversation conversation) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        scrollable: true,
+        title: Text('Delete “${conversation.title}”?'),
+        content: const Text(
+          'This removes only this conversation from this device. Your property and other conversations remain.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(c, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(c, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      final previous = chat.activeConversation.id;
+      if (await chat.deleteConversation(conversation.id) && mounted) {
+        _drafts.remove(conversation.id);
+        if (previous != chat.activeConversation.id) {
+          input.text = _drafts[chat.activeConversation.id] ?? '';
+          showLatest();
+        }
+      }
+    }
+  }
+
+  Future<void> showConversations() async {
+    final action = await showModalBottomSheet<({String action, String? id})>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      showDragHandle: true,
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.sizeOf(context).height * .75,
+      ),
+      builder: (c) => ConversationsSheet(
+        conversations: chat.conversations,
+        activeId: chat.activeConversation.id,
+        onNew: () => Navigator.pop(c, (action: 'new', id: null)),
+        onOpen: (conversation) =>
+            Navigator.pop(c, (action: 'open', id: conversation.id)),
+        onRename: (conversation) =>
+            Navigator.pop(c, (action: 'rename', id: conversation.id)),
+        onDelete: (conversation) =>
+            Navigator.pop(c, (action: 'delete', id: conversation.id)),
+      ),
+    );
+    if (action == null || !mounted) {
+      return;
+    }
+    if (action.action == 'new') {
+      await startConversation();
+      return;
+    }
+    final conversation = chat.conversations.firstWhere(
+      (c) => c.id == action.id,
+    );
+    if (action.action == 'open') {
+      await openConversation(conversation.id);
+    }
+    if (action.action == 'rename') {
+      await renameConversation(conversation);
+    }
+    if (action.action == 'delete') {
+      await deleteConversation(conversation);
     }
   }
 
@@ -150,15 +298,8 @@ class _PropertyChatSheetState extends State<PropertyChatSheet> {
                   ),
                   IconButton(
                     tooltip: 'AI settings',
-                    onPressed: chat.busy ? null : configure,
+                    onPressed: chat.unavailable ? null : configure,
                     icon: const Icon(Icons.settings_outlined),
-                  ),
-                  IconButton(
-                    tooltip: 'Clear chat history',
-                    onPressed: chat.busy || chat.messages.isEmpty
-                        ? null
-                        : clear,
-                    icon: const Icon(Icons.delete_outline),
                   ),
                   IconButton(
                     tooltip: 'Close chat',
@@ -168,10 +309,64 @@ class _PropertyChatSheetState extends State<PropertyChatSheet> {
                 ],
               ),
             ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      chat.activeConversation.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.titleSmall,
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'New conversation',
+                    onPressed: chat.unavailable ? null : startConversation,
+                    icon: const Icon(Icons.add_comment_outlined),
+                  ),
+                  IconButton(
+                    tooltip: 'Conversations',
+                    onPressed: chat.unavailable ? null : showConversations,
+                    icon: const Icon(Icons.history),
+                  ),
+                  PopupMenuButton<String>(
+                    tooltip: 'Conversation options',
+                    enabled: !chat.unavailable,
+                    onSelected: (action) {
+                      if (action == 'rename') {
+                        renameConversation(chat.activeConversation);
+                      } else if (action == 'delete') {
+                        deleteConversation(chat.activeConversation);
+                      } else {
+                        clear();
+                      }
+                    },
+                    itemBuilder: (_) => [
+                      const PopupMenuItem(
+                        value: 'rename',
+                        child: Text('Rename conversation'),
+                      ),
+                      PopupMenuItem(
+                        value: 'clear',
+                        enabled: chat.messages.isNotEmpty,
+                        child: const Text('Clear conversation'),
+                      ),
+                      const PopupMenuItem(
+                        value: 'delete',
+                        child: Text('Delete conversation'),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
             Expanded(
               child: chat.loading
                   ? const Center(child: CircularProgressIndicator())
                   : ListView(
+                      key: ValueKey(chat.activeConversation.id),
                       controller: scroll,
                       padding: const EdgeInsets.all(16),
                       children: [
@@ -180,7 +375,7 @@ class _PropertyChatSheetState extends State<PropertyChatSheet> {
                         ),
                         const SizedBox(height: 8),
                         Text(
-                          'Provider: ${chat.provider.label} · ${chat.model}\nSending shares your messages, recent conversation and property data with ${chat.provider.label}. Results are planning estimates, not legal surveys.',
+                          'Sending shares your messages, recent conversation and property data with your configured AI service. Results are planning estimates, not legal surveys.',
                           style: const TextStyle(fontSize: 11),
                         ),
                         if (!chat.configured)
@@ -189,7 +384,7 @@ class _PropertyChatSheetState extends State<PropertyChatSheet> {
                             child: FilledButton.tonalIcon(
                               onPressed: configure,
                               icon: const Icon(Icons.key),
-                              label: Text('Set up ${chat.provider.label} key'),
+                              label: const Text('Set up LandO'),
                             ),
                           ),
                         if (chat.messages.isEmpty && chat.configured)
@@ -207,7 +402,7 @@ class _PropertyChatSheetState extends State<PropertyChatSheet> {
                                 ])
                                   ActionChip(
                                     label: Text(question),
-                                    onPressed: chat.busy
+                                    onPressed: chat.unavailable
                                         ? null
                                         : () => send(question),
                                   ),
@@ -221,11 +416,7 @@ class _PropertyChatSheetState extends State<PropertyChatSheet> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  message.role == 'user'
-                                      ? 'You'
-                                      : message.provider == null
-                                      ? 'LandO'
-                                      : 'LandO · ${message.provider}',
+                                  message.role == 'user' ? 'You' : 'LandO',
                                   style: Theme.of(context).textTheme.labelLarge,
                                 ),
                                 const SizedBox(height: 4),
@@ -255,6 +446,15 @@ class _PropertyChatSheetState extends State<PropertyChatSheet> {
                             child: const Text('Stop request'),
                           ),
                         ],
+                        if (!chat.unavailable &&
+                            chat.error == null &&
+                            chat.retryQuestion != null &&
+                            chat.configured)
+                          TextButton(
+                            onPressed: () =>
+                                chat.send(chat.retryQuestion!, retry: true),
+                            child: const Text('Continue last question'),
+                          ),
                         if (chat.error != null) ...[
                           Text(
                             chat.error!,
@@ -282,7 +482,7 @@ class _PropertyChatSheetState extends State<PropertyChatSheet> {
                   Expanded(
                     child: TextField(
                       controller: input,
-                      enabled: !chat.loading && !chat.busy && chat.configured,
+                      enabled: !chat.unavailable && chat.configured,
                       minLines: 1,
                       maxLines: 3,
                       maxLength: 2000,
@@ -297,7 +497,7 @@ class _PropertyChatSheetState extends State<PropertyChatSheet> {
                   const SizedBox(width: 8),
                   IconButton.filled(
                     tooltip: 'Send question',
-                    onPressed: chat.loading || chat.busy || !chat.configured
+                    onPressed: chat.unavailable || !chat.configured
                         ? null
                         : () => send(),
                     icon: const Icon(Icons.send),

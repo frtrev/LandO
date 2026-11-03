@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import '../models/chat_message.dart';
+import '../models/chat_conversation.dart';
 import '../models/property.dart';
 import '../services/assistant/api_key_store.dart';
 import '../services/assistant/openai_assistant.dart';
@@ -14,7 +15,14 @@ class PropertyChatController extends ChangeNotifier {
   final PropertyRepository repository;
   final ApiKeyStore keyStore;
   final LandoAssistant Function()? createAssistant;
-  final List<ChatMessage> messages = [];
+  ConversationArchive _archive = ConversationArchive.empty();
+  ChatConversation get activeConversation => _archive.active;
+  List<ChatMessage> get messages => activeConversation.messages;
+  List<ChatConversation> get conversations =>
+      List.unmodifiable(_archive.newestFirst);
+  bool managing = false;
+  bool _historyReady = false;
+  bool get unavailable => loading || busy || managing || !_historyReady;
   final List<CalculationRecord> pendingCalculations = [];
   bool loading = true, busy = false, configured = false;
   bool _disposed = false;
@@ -40,19 +48,15 @@ class PropertyChatController extends ChangeNotifier {
   Future<void> load() async {
     try {
       final data = await repository.preference('chat:$propertyId');
-      if (data != null && data.isNotEmpty) {
-        final history = (jsonDecode(data) as List)
-            .map((m) => ChatMessage.fromJson(Map<String, dynamic>.from(m)))
-            .where((m) => m.role == 'user' || m.role == 'assistant')
-            .toList();
-        messages.addAll(
-          history.skip(history.length > 40 ? history.length - 40 : 0),
-        );
-      }
+      _archive = ConversationArchive.fromStored(data);
+      // Atomic replacement publishes both migrated conversations and selection.
+      // On failure, the original preference remains intact.
+      await _persist();
+      _historyReady = true;
       await reloadConfiguration();
     } on Object {
       error =
-          'Could not load this conversation or secure AI settings. Retry or clear this conversation.';
+          'Could not load conversations or secure AI settings. Close chat and try again. Stored conversations have not been cleared.';
     } finally {
       loading = false;
       _notify();
@@ -72,7 +76,7 @@ class PropertyChatController extends ChangeNotifier {
   }
 
   Future<void> _persist() {
-    final data = jsonEncode(messages.map((m) => m.toJson()).toList());
+    final data = jsonEncode(_archive.toJson());
     final write = _writes.then(
       (_) => repository.setPreference('chat:$propertyId', data),
     );
@@ -82,20 +86,21 @@ class PropertyChatController extends ChangeNotifier {
 
   Future<void> send(String question, {bool retry = false}) async {
     final text = question.trim();
-    if (busy || loading || text.isEmpty || text.length > 2000) {
+    if (unavailable || text.isEmpty || text.length > 2000) {
       return;
     }
     busy = true;
     error = null;
     pendingCalculations.clear();
     final generation = ++_generation;
+    final conversation = activeConversation;
     _notify();
     try {
       final key = await keyStore.read(provider: provider);
       if (key == null || key.trim().isEmpty) {
         configured = false;
         throw AssistantException(
-          'Add your own ${provider.label} API key in AI settings to ask LandO.',
+          'Add your API key in AI settings to ask LandO.',
         );
       }
       final snapshot = Property.fromJson(currentProperty().toJson());
@@ -105,13 +110,16 @@ class PropertyChatController extends ChangeNotifier {
         );
       }
       if (!retry) {
-        messages.add(ChatMessage(role: 'user', text: text));
+        if (conversation.messages.isEmpty && conversation.autoTitle) {
+          conversation.title = ChatConversation.titleFromQuestion(text);
+        }
+        conversation.messages.add(ChatMessage(role: 'user', text: text));
       }
-      if (messages.length > 40) {
-        messages.removeRange(0, messages.length - 40);
-      }
+      conversation.modified = DateTime.now().toUtc();
       await _persist();
-      if (_disposed || generation != _generation) {
+      if (_disposed ||
+          generation != _generation ||
+          activeConversation.id != conversation.id) {
         return;
       }
       _active =
@@ -121,7 +129,7 @@ class PropertyChatController extends ChangeNotifier {
               : OpenAiAssistant());
       final reply = await _active!.ask(
         property: snapshot,
-        history: List.unmodifiable(messages),
+        history: List.unmodifiable(conversation.messages),
         apiKey: key,
         model: model,
         onCalculation: (record) {
@@ -131,10 +139,12 @@ class PropertyChatController extends ChangeNotifier {
           }
         },
       );
-      if (_disposed || generation != _generation) {
+      if (_disposed ||
+          generation != _generation ||
+          activeConversation.id != conversation.id) {
         return;
       }
-      messages.add(
+      conversation.messages.add(
         ChatMessage(
           role: 'assistant',
           text: reply.text,
@@ -142,9 +152,7 @@ class PropertyChatController extends ChangeNotifier {
           provider: provider.label,
         ),
       );
-      if (messages.length > 40) {
-        messages.removeRange(0, messages.length - 40);
-      }
+      conversation.modified = DateTime.now().toUtc();
       try {
         await _persist();
       } on Object {
@@ -180,20 +188,70 @@ class PropertyChatController extends ChangeNotifier {
     _notify();
   }
 
-  Future<void> clearHistory() async {
-    if (busy) {
-      return;
+  /// Block navigation during a request, and roll back any management edit if
+  /// its atomic SQLite archive write fails. No other conversation is cleared.
+  Future<bool> _manage(void Function() edit, String failureMessage) async {
+    if (unavailable) {
+      return false;
     }
-    try {
-      await _writes;
-      await repository.setPreference('chat:$propertyId', '[]');
-      messages.clear();
-      pendingCalculations.clear();
-      error = null;
-    } on Object {
-      error = 'Could not clear the conversation. Please try again.';
-    }
+    managing = true;
+    _generation++;
+    error = null;
+    final before = ConversationArchive.fromStored(
+      jsonEncode(_archive.toJson()),
+    );
     _notify();
+    try {
+      edit();
+      pendingCalculations.clear();
+      await _persist();
+      return true;
+    } on Object {
+      _archive = before;
+      error = failureMessage;
+      return false;
+    } finally {
+      managing = false;
+      _notify();
+    }
+  }
+
+  Future<bool> newConversation() => _manage(() {
+    final conversation = ChatConversation.empty();
+    _archive.conversations.add(conversation);
+    _archive.activeId = conversation.id;
+  }, 'Could not create a conversation. Please try again.');
+  Future<bool> openConversation(String id) => _manage(() {
+    if (!_archive.conversations.any((c) => c.id == id)) {
+      throw StateError('Conversation not found');
+    }
+    _archive.activeId = id;
+  }, 'Could not open that conversation. Please try again.');
+  Future<bool> renameConversation(String id, String title) => _manage(() {
+    final name = title.trim();
+    if (name.isEmpty || name.length > 100) {
+      throw const FormatException('Enter a title of 1–100 characters.');
+    }
+    final conversation = _archive.conversations.firstWhere((c) => c.id == id);
+    conversation.title = name;
+    conversation.autoTitle = false;
+  }, 'Could not rename that conversation. Please try again.');
+  Future<bool> deleteConversation(String id) => _manage(() {
+    if (!_archive.conversations.any((c) => c.id == id)) {
+      throw StateError('Conversation not found');
+    }
+    _archive.conversations.removeWhere((c) => c.id == id);
+    if (_archive.conversations.isEmpty) {
+      _archive = ConversationArchive.empty();
+    } else if (_archive.activeId == id) {
+      _archive.activeId = _archive.newestFirst.first.id;
+    }
+  }, 'Could not delete that conversation. Please try again.');
+  Future<void> clearHistory() async {
+    await _manage(() {
+      messages.clear();
+      activeConversation.modified = DateTime.now().toUtc();
+    }, 'Could not clear this conversation. Please try again.');
   }
 
   @override

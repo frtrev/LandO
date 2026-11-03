@@ -787,7 +787,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                     contentPadding: EdgeInsets.zero,
                     leading: const Icon(Icons.auto_awesome_outlined),
                     title: const Text('LandO assistant settings'),
-                    subtitle: const Text('OpenAI or Gemini · keys and models'),
+                    subtitle: const Text('Configure your LandO assistant'),
                     onTap: aiSettings,
                   ),
                   const SizedBox(height: 16),

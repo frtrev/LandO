@@ -30,7 +30,7 @@ class GeminiAssistant implements LandoAssistant {
   }) async {
     if (!RegExp(r'^[a-zA-Z0-9][a-zA-Z0-9._-]{0,99}$').hasMatch(model)) {
       throw const AssistantException(
-        'Enter a valid Gemini model ID in AI settings.',
+        'Check your LandO configuration in AI settings.',
       );
     }
     final tools = PropertyTools(property);
@@ -53,7 +53,7 @@ class GeminiAssistant implements LandoAssistant {
         final remaining = 120000 - timer.elapsedMilliseconds;
         if (remaining <= 0) {
           throw const AssistantException(
-            'Gemini took too long to answer. Try a more specific question.',
+            'LandO took too long to answer. Try a more specific question.',
           );
         }
         final response = await client
@@ -96,26 +96,26 @@ class GeminiAssistant implements LandoAssistant {
         if (response.statusCode != 200) {
           throw AssistantException(switch (response.statusCode) {
             401 || 403 =>
-              'Gemini rejected this key or its permissions. Check the Gemini key and Generative Language API access in AI settings.',
+              'LandO could not authenticate. Check your API key and service access in AI settings.',
             429 =>
-              'Gemini reports a quota or rate limit. Check your Google project usage and billing, then try again.',
+              'LandO reached a usage limit. Check your configured service usage and billing, then try again.',
             400 || 404 =>
-              'Gemini could not use this key, model or request. Check your Gemini model and API access in AI settings.',
-            _ => 'Gemini is unavailable right now. Please try again later.',
+              'LandO could not complete this request. Check your configuration and API access in AI settings.',
+            _ => 'LandO is unavailable right now. Please try again later.',
           });
         }
         final body = jsonDecode(response.body) as Map<String, dynamic>;
         final candidates = body['candidates'] as List? ?? [];
         if (candidates.isEmpty) {
           throw const AssistantException(
-            'Gemini could not answer this question. Try rephrasing it.',
+            'LandO could not answer this question. Try rephrasing it.',
           );
         }
         final candidate = Map<String, dynamic>.from(candidates.first as Map);
         final finish = candidate['finishReason'];
         if (finish != null && finish != 'STOP') {
           throw const AssistantException(
-            'Gemini did not finish this answer. Try a shorter or rephrased question.',
+            'LandO did not finish this answer. Try a shorter or rephrased question.',
           );
         }
         final content = Map<String, dynamic>.from(candidate['content'] as Map);
@@ -137,7 +137,7 @@ class GeminiAssistant implements LandoAssistant {
               .join('\n\n');
           if (text.trim().isEmpty || !summaryRead) {
             throw const AssistantException(
-              'Gemini could not produce an answer grounded in this property. Please try again.',
+              'LandO could not produce an answer grounded in this property. Please try again.',
             );
           }
           return AssistantReply(text, records);
@@ -181,21 +181,21 @@ class GeminiAssistant implements LandoAssistant {
         contents.add({'role': 'user', 'parts': results});
       }
       throw const AssistantException(
-        'Gemini reached its calculation limit. Try one question at a time.',
+        'LandO reached its calculation limit. Try one question at a time.',
       );
     } on AssistantException {
       rethrow;
     } on TimeoutException {
       throw const AssistantException(
-        'Gemini timed out. Check your connection and try again.',
+        'LandO timed out. Check your connection and try again.',
       );
     } on http.ClientException {
       throw const AssistantException(
-        'Could not reach Gemini. Check your connection and try again.',
+        'Could not reach LandO. Check your connection and try again.',
       );
     } on Object {
       throw const AssistantException(
-        'Could not read the Gemini response. Please try again.',
+        'Could not read the LandO response. Please try again.',
       );
     }
   }

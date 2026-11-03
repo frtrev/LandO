@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lando/controllers/property_chat_controller.dart';
@@ -96,6 +97,8 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(find.text('Ask LandO'), findsOneWidget);
+      expect(find.textContaining('OpenAI'), findsNothing);
+      expect(find.textContaining('gpt-'), findsNothing);
       await tester.enterText(find.byType(TextField), 'How many acres?');
       await tester.tap(find.byTooltip('Send question'));
       await tester.pumpAndSettle();
@@ -103,6 +106,9 @@ void main() {
         find.text('The acreage is shown in the app result below.'),
         findsOneWidget,
       );
+      expect(find.text('LandO'), findsOneWidget);
+      expect(find.text('LandO · OpenAI'), findsNothing);
+      expect(find.textContaining('Gemini'), findsNothing);
       await tester.ensureVisible(find.text('Property area'));
       await tester.tap(find.text('Property area'));
       await tester.pumpAndSettle();
@@ -222,6 +228,93 @@ void main() {
       expect(keys.key, 'sk-existing');
       await tester.pumpWidget(const SizedBox());
       await tester.binding.setSurfaceSize(null);
+    },
+  );
+  testWidgets(
+    'chat creates separate conversations, reloads an old one, and resumes only its own history',
+    (tester) async {
+      final repo = ChatMemoryRepository(),
+          keys = MemoryKeyStore('sk-test'),
+          property = exampleProperty();
+      repo.preferences['chat:${property.id}'] = jsonEncode([
+        ChatMessage(role: 'user', text: 'Garden layout').toJson(),
+        ChatMessage(role: 'assistant', text: 'Use the north area.').toJson(),
+      ]);
+      final inputs = <List<String>>[];
+      await tester.binding.setSurfaceSize(const Size(390, 844));
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: PropertyChatSheet(
+              currentProperty: () => property,
+              repository: repo,
+              keyStore: keys,
+              createAssistant: () => FakeAssistant((p, h) async {
+                inputs.add(h.map((m) => m.text).toList());
+                return AssistantReply(
+                  h.first.text == 'Fence layout'
+                      ? 'Fence answer.'
+                      : 'Garden answer.',
+                  [],
+                );
+              }),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Use the north area.'), findsOneWidget);
+      await tester.tap(find.byTooltip('New conversation'));
+      await tester.pumpAndSettle();
+      expect(find.text('Use the north area.'), findsNothing);
+      await tester.enterText(find.byType(TextField), 'Fence layout');
+      await tester.tap(find.byTooltip('Send question'));
+      await tester.pumpAndSettle();
+      expect(inputs.last, ['Fence layout']);
+      Future<void> open(String title) async {
+        await tester.tap(find.byTooltip('Conversations'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.widgetWithText(ListTile, title));
+        await tester.pumpAndSettle();
+      }
+
+      await open('Garden layout');
+      expect(find.text('Use the north area.'), findsOneWidget);
+      await tester.enterText(find.byType(TextField), 'What about a gate?');
+      await tester.tap(find.byTooltip('Send question'));
+      await tester.pumpAndSettle();
+      expect(inputs.last, [
+        'Garden layout',
+        'Use the north area.',
+        'What about a gate?',
+      ]);
+      await tester.enterText(find.byType(TextField), 'Unsent garden question');
+      await open('Fence layout');
+      expect(
+        tester.widget<TextField>(find.byType(TextField)).controller!.text,
+        isEmpty,
+      );
+      await open('Garden layout');
+      expect(
+        tester.widget<TextField>(find.byType(TextField)).controller!.text,
+        'Unsent garden question',
+      );
+      await tester.binding.setSurfaceSize(const Size(667, 375));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+      await tester.binding.setSurfaceSize(null);
+      final restored = PropertyChatController(
+        propertyId: property.id,
+        currentProperty: () => property,
+        repository: repo,
+        keyStore: keys,
+      );
+      await restored.load();
+      expect(restored.activeConversation.title, 'Garden layout');
+      expect(restored.conversations, hasLength(2));
+      expect(restored.messages.last.text, 'Garden answer.');
+      restored.dispose();
     },
   );
 }
