@@ -1,3 +1,4 @@
+import 'researched_answer.dart';
 import 'package:flutter/material.dart';
 import '../../controllers/property_chat_controller.dart';
 import '../../models/property.dart';
@@ -5,7 +6,6 @@ import '../../services/assistant/api_key_store.dart';
 import '../../services/assistant/openai_assistant.dart';
 import '../../services/property_repository.dart';
 import 'ai_settings_sheet.dart';
-import 'calculation_card.dart';
 import 'conversations_sheet.dart';
 import '../../models/chat_conversation.dart';
 
@@ -371,11 +371,11 @@ class _PropertyChatSheetState extends State<PropertyChatSheet> {
                       padding: const EdgeInsets.all(16),
                       children: [
                         const Text(
-                          'Ask about your boundary, saved areas, measurements, or a project. LandO calculates quantities; the assistant explains them.',
+                          'Ask about your boundary, saved areas, measurements, or a project. LandO calculates quantities and can research current costs.',
                         ),
                         const SizedBox(height: 8),
                         Text(
-                          'Sending shares your messages, recent conversation and property data with your configured AI service. Results are planning estimates, not legal surveys.',
+                          'Sending shares your messages, recent conversation and property data with your configured AI service. Internet research may share relevant context with search services when enabled in AI settings. Results are planning estimates, not legal surveys.',
                           style: const TextStyle(fontSize: 11),
                         ),
                         if (!chat.configured)
@@ -420,18 +420,7 @@ class _PropertyChatSheetState extends State<PropertyChatSheet> {
                                   style: Theme.of(context).textTheme.labelLarge,
                                 ),
                                 const SizedBox(height: 4),
-                                SelectableText(message.text),
-                                if (message.calculations.isNotEmpty) ...[
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    'Property snapshot · ${message.created.toLocal().toString().split('.').first}',
-                                    style: Theme.of(
-                                      context,
-                                    ).textTheme.labelSmall,
-                                  ),
-                                  for (final record in message.calculations)
-                                    CalculationCard(record: record),
-                                ],
+                                ResearchedAnswer(message: message),
                               ],
                             ),
                           ),
@@ -439,7 +428,7 @@ class _PropertyChatSheetState extends State<PropertyChatSheet> {
                           const LinearProgressIndicator(),
                           const SizedBox(height: 8),
                           Text(
-                            'LandO is checking your property and calculations… (${chat.pendingCalculations.length} results)',
+                            'LandO is preparing your answer… (${chat.pendingCalculations.length} results)',
                           ),
                           TextButton(
                             onPressed: chat.cancel,

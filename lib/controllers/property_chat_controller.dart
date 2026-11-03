@@ -30,6 +30,7 @@ class PropertyChatController extends ChangeNotifier {
   String? error;
   AssistantProvider provider = AssistantProvider.openai;
   String model = defaultAssistantModel;
+  bool queryInternet = true;
   LandoAssistant? _active;
   Future<void> _writes = Future.value();
   PropertyChatController({
@@ -64,6 +65,7 @@ class PropertyChatController extends ChangeNotifier {
   }
 
   Future<void> reloadConfiguration() async {
+    queryInternet = await repository.preference('queryInternet') != 'false';
     provider = AssistantProvider.parse(
       await repository.preference('aiProvider'),
     );
@@ -132,6 +134,7 @@ class PropertyChatController extends ChangeNotifier {
         history: List.unmodifiable(conversation.messages),
         apiKey: key,
         model: model,
+        queryInternet: queryInternet,
         onCalculation: (record) {
           if (!_disposed && generation == _generation) {
             pendingCalculations.add(record);
@@ -149,6 +152,7 @@ class PropertyChatController extends ChangeNotifier {
           role: 'assistant',
           text: reply.text,
           calculations: reply.calculations,
+          research: reply.research,
           provider: provider.label,
         ),
       );

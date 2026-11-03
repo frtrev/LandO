@@ -18,6 +18,7 @@ class FakeAssistant implements LandoAssistant {
     required List<ChatMessage> history,
     required String apiKey,
     required String model,
+    bool queryInternet = true,
     void Function(CalculationRecord)? onCalculation,
   }) => answer(property, history);
   @override

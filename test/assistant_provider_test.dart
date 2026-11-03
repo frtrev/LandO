@@ -11,15 +11,18 @@ import 'support/assistant_fixtures.dart';
 class CaptureAssistant implements LandoAssistant {
   String? key, model;
   int calls = 0;
+  bool? internet;
   @override
   Future<AssistantReply> ask({
     required Property property,
     required List<ChatMessage> history,
     required String apiKey,
     required String model,
+    bool queryInternet = true,
     void Function(CalculationRecord)? onCalculation,
   }) async {
     calls++;
+    internet = queryInternet;
     key = apiKey;
     this.model = model;
     return const AssistantReply('App-calculated result.', []);
@@ -68,11 +71,13 @@ void main() {
         createAssistant: () => capture,
       );
       await chat.load();
+      expect(chat.queryInternet, true);
       expect(chat.provider, AssistantProvider.gemini);
       expect(chat.configured, true);
       await chat.send('Area?');
       expect(capture.key, 'google-private');
       expect(capture.model, 'gemini-custom');
+      expect(capture.internet, true);
       expect(chat.messages.last.provider, 'Gemini');
       repo.preferences['aiProvider'] = 'openai';
       await chat.reloadConfiguration();
@@ -81,11 +86,14 @@ void main() {
       expect(capture.calls, 1);
       expect(chat.error, contains('API key'));
       keys.key = 'sk-openai';
+      repo.preferences['queryInternet'] = 'false';
       await chat.reloadConfiguration();
       await chat.send('Follow up?');
       expect(capture.calls, 2);
       expect(capture.key, 'sk-openai');
       expect(capture.model, 'openai-custom');
+      expect(chat.queryInternet, false);
+      expect(capture.internet, false);
       expect(chat.messages.last.provider, 'OpenAI');
       expect(chat.messages[1].provider, 'Gemini');
       expect(repo.preferences.values.join(), isNot(contains('google-private')));

@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import '../../models/chat_message.dart';
 import '../../models/property.dart';
 import 'property_tools.dart';
+import 'research_collector.dart';
 import 'lando_assistant.dart';
 import 'assistant_instructions.dart';
 export 'lando_assistant.dart';
@@ -18,6 +19,7 @@ class OpenAiAssistant implements LandoAssistant {
     required List<ChatMessage> history,
     required String apiKey,
     required String model,
+    bool queryInternet = true,
     void Function(CalculationRecord)? onCalculation,
   }) async {
     final tools = PropertyTools(property);
@@ -25,9 +27,10 @@ class OpenAiAssistant implements LandoAssistant {
       for (final message in history.skip(
         history.length > 24 ? history.length - 24 : 0,
       ))
-        {'role': message.role, 'content': message.text},
+        {'role': message.role, 'content': message.contextText},
     ];
     final records = <CalculationRecord>[];
+    final research = ResearchCollector();
     final timer = Stopwatch()..start();
     var summaryRead = false, callsExecuted = 0;
     try {
@@ -47,9 +50,12 @@ class OpenAiAssistant implements LandoAssistant {
               },
               body: jsonEncode({
                 'model': model,
-                'instructions': instructions,
+                'instructions': instructionsForSearch(queryInternet),
                 'input': input,
-                'tools': PropertyTools.definitions,
+                'tools': [
+                  ...PropertyTools.definitions,
+                  if (queryInternet && round > 0) {'type': 'web_search'},
+                ],
                 'tool_choice': round == 0
                     ? {'type': 'function', 'name': 'get_property_summary'}
                     : 'auto',
@@ -70,7 +76,9 @@ class OpenAiAssistant implements LandoAssistant {
             429 =>
               'LandO reached a usage limit. Check your configured service usage and billing, then try again.',
             400 || 404 =>
-              'LandO could not complete this request. Check your configuration and API access in AI settings.',
+              queryInternet
+                  ? 'LandO could not complete this request with internet search enabled. Check search support and API access in AI settings, or turn off Query the internet.'
+                  : 'LandO could not complete this request. Check your configuration and API access in AI settings.',
             _ => 'LandO is unavailable right now. Please try again later.',
           });
         }
@@ -86,6 +94,7 @@ class OpenAiAssistant implements LandoAssistant {
         // Replay every output item, including encrypted reasoning, for stateless
         // tool continuation. No previous_response_id/server-side storage is used.
         input.addAll(output);
+        if (queryInternet) research.openAi(output);
         final calls = output
             .where((item) => item['type'] == 'function_call')
             .toList();
@@ -108,7 +117,11 @@ class OpenAiAssistant implements LandoAssistant {
               'LandO could not produce an answer grounded in this property. Please try again.',
             );
           }
-          return AssistantReply(text.join('\n\n'), records);
+          return AssistantReply(
+            text.join('\n\n'),
+            records,
+            research: research.result,
+          );
         }
         for (final call in calls) {
           if (++callsExecuted > 16) {

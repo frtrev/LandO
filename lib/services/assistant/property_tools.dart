@@ -154,7 +154,7 @@ class PropertyTools {
           }),
         },
         'labor_cost': _number(
-          'Total user-supplied labor cost; zero only if excluded explicitly.',
+          'Total labor cost from user-supplied or cited published rates; zero only if excluded explicitly.',
         ),
         'tax_percent': _number(
           'Tax percentage applied to materials and labor.',

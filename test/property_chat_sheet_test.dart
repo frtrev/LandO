@@ -44,10 +44,18 @@ void main() {
         find.byType(TextField).first,
         'sk-private-ui-test',
       );
+      expect(
+        tester.widget<SwitchListTile>(find.byType(SwitchListTile)).value,
+        true,
+      );
+      await tester.ensureVisible(find.text('Query the internet'));
+      await tester.tap(find.text('Query the internet'));
+      await tester.pumpAndSettle();
       await tester.ensureVisible(find.text('Save AI settings'));
       await tester.tap(find.text('Save AI settings'));
       await tester.pumpAndSettle();
       expect(keys.key, 'sk-private-ui-test');
+      expect(repo.preferences['queryInternet'], 'false');
       expect(
         repo.preferences.values.join(),
         isNot(contains('sk-private-ui-test')),
@@ -57,6 +65,10 @@ void main() {
       expect(
         tester.widget<TextField>(find.byType(TextField).first).controller!.text,
         isEmpty,
+      );
+      expect(
+        tester.widget<SwitchListTile>(find.byType(SwitchListTile)).value,
+        false,
       );
       await tester.ensureVisible(find.text('Remove API key'));
       await tester.tap(find.text('Remove API key'));
@@ -109,6 +121,9 @@ void main() {
       expect(find.text('LandO'), findsOneWidget);
       expect(find.text('LandO · OpenAI'), findsNothing);
       expect(find.textContaining('Gemini'), findsNothing);
+      expect(find.text('Property area'), findsNothing);
+      await tester.tap(find.text('View details'));
+      await tester.pumpAndSettle();
       await tester.ensureVisible(find.text('Property area'));
       await tester.tap(find.text('Property area'));
       await tester.pumpAndSettle();

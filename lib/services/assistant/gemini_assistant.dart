@@ -6,6 +6,7 @@ import '../../models/property.dart';
 import 'assistant_instructions.dart';
 import 'lando_assistant.dart';
 import 'property_tools.dart';
+import 'research_collector.dart';
 
 /// Gemini Developer API (Generative Language API), with local read-only tools.
 /// Credentials never appear in URLs, error messages, or conversation storage.
@@ -26,6 +27,7 @@ class GeminiAssistant implements LandoAssistant {
     required List<ChatMessage> history,
     required String apiKey,
     required String model,
+    bool queryInternet = true,
     void Function(CalculationRecord)? onCalculation,
   }) async {
     if (!RegExp(r'^[a-zA-Z0-9][a-zA-Z0-9._-]{0,99}$').hasMatch(model)) {
@@ -41,11 +43,12 @@ class GeminiAssistant implements LandoAssistant {
         {
           'role': message.role == 'assistant' ? 'model' : 'user',
           'parts': [
-            {'text': message.text},
+            {'text': message.contextText},
           ],
         },
     ];
     final records = <CalculationRecord>[];
+    final research = ResearchCollector();
     final timer = Stopwatch()..start();
     var summaryRead = false, callsExecuted = 0;
     try {
@@ -69,20 +72,26 @@ class GeminiAssistant implements LandoAssistant {
               body: jsonEncode({
                 'systemInstruction': {
                   'parts': [
-                    {'text': assistantInstructions},
+                    {'text': instructionsForSearch(queryInternet)},
                   ],
                 },
                 'contents': contents,
                 'tools': [
                   {'functionDeclarations': functionDeclarations},
+                  if (queryInternet && round > 0) {'googleSearch': {}},
                 ],
+                // Mixed search/function tools require context circulation and
+                // VALIDATED mode. Replay the complete content below, including
+                // hosted tool calls/results and their signatures.
                 'toolConfig': {
+                  if (queryInternet && round > 0)
+                    'includeServerSideToolInvocations': true,
                   'functionCallingConfig': round == 0
                       ? {
                           'mode': 'ANY',
                           'allowedFunctionNames': ['get_property_summary'],
                         }
-                      : {'mode': 'AUTO'},
+                      : {'mode': queryInternet ? 'VALIDATED' : 'AUTO'},
                 },
                 'generationConfig': {
                   'maxOutputTokens': 3000,
@@ -100,7 +109,9 @@ class GeminiAssistant implements LandoAssistant {
             429 =>
               'LandO reached a usage limit. Check your configured service usage and billing, then try again.',
             400 || 404 =>
-              'LandO could not complete this request. Check your configuration and API access in AI settings.',
+              queryInternet
+                  ? 'LandO could not complete this request with internet search enabled. Check search support and API access in AI settings, or turn off Query the internet.'
+                  : 'LandO could not complete this request. Check your configuration and API access in AI settings.',
             _ => 'LandO is unavailable right now. Please try again later.',
           });
         }
@@ -125,6 +136,11 @@ class GeminiAssistant implements LandoAssistant {
         // Keep the entire model content verbatim: function-call parts can carry
         // thoughtSignature and call IDs required by subsequent Gemini requests.
         contents.add(content);
+        final visibleText = parts
+            .where((p) => p['text'] is String && p['thought'] != true)
+            .map((p) => p['text'] as String)
+            .join('\n\n');
+        if (queryInternet) research.gemini(candidate, visibleText);
         final calls = parts
             .where((part) => part['functionCall'] != null)
             .toList();
@@ -140,7 +156,7 @@ class GeminiAssistant implements LandoAssistant {
               'LandO could not produce an answer grounded in this property. Please try again.',
             );
           }
-          return AssistantReply(text, records);
+          return AssistantReply(text, records, research: research.result);
         }
         final results = <Map<String, dynamic>>[];
         for (final part in calls) {

@@ -60,7 +60,11 @@ void main() {
               },
             ]);
           }
-          expect(body['toolConfig']['functionCallingConfig']['mode'], 'AUTO');
+          expect(
+            body['toolConfig']['functionCallingConfig']['mode'],
+            'VALIDATED',
+          );
+          expect(body['toolConfig']['includeServerSideToolInvocations'], true);
           expect(contents[3]['parts'][0]['thoughtSignature'], 'opaque-summary');
           expect(contents[4]['parts'][0]['functionResponse']['id'], 'summary');
           expect(

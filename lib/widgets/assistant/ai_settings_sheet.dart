@@ -22,6 +22,7 @@ class _AiSettingsSheetState extends State<AiSettingsSheet> {
   AssistantProvider provider = AssistantProvider.openai;
   bool loading = true, busy = false, configured = false, visible = false;
   String? error;
+  bool queryInternet = true;
   @override
   void initState() {
     super.initState();
@@ -30,6 +31,8 @@ class _AiSettingsSheetState extends State<AiSettingsSheet> {
 
   Future<void> load() async {
     try {
+      queryInternet =
+          await widget.repository.preference('queryInternet') != 'false';
       provider = AssistantProvider.parse(
         await widget.repository.preference('aiProvider'),
       );
@@ -123,6 +126,10 @@ class _AiSettingsSheetState extends State<AiSettingsSheet> {
           await widget.keyStore.save(key, provider: provider);
         }
         await widget.repository.setPreference(provider.modelPreference, model);
+        await widget.repository.setPreference(
+          'queryInternet',
+          queryInternet.toString(),
+        );
         // Publish the selection after its key/model have been written.
         await widget.repository.setPreference('aiProvider', provider.name);
       }
@@ -247,9 +254,20 @@ class _AiSettingsSheetState extends State<AiSettingsSheet> {
                 ),
               ),
               const SizedBox(height: 12),
+              SwitchListTile.adaptive(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Query the internet'),
+                subtitle: const Text(
+                  'Let LandO search for current prices and other information when useful. Search queries may include property context and location. Search usage may incur additional service charges. Online information can be incomplete or inaccurate.',
+                ),
+                value: queryInternet,
+                onChanged: busy
+                    ? null
+                    : (value) => setState(() => queryInternet = value),
+              ),
               if (provider == AssistantProvider.gemini)
                 const Text(
-                  'Use a Gemini Developer API key from Google AI Studio, linked to your Cloud project with Generative Language API access. Google Maps keys and Vertex AI service-account credentials are separate.',
+                  'Use a Gemini Developer API key from Google AI Studio, linked to your Cloud project with Generative Language API access. Google Maps keys and Vertex AI service-account credentials are separate. Internet search alongside local calculations requires a model supporting combined search and function tools, such as Gemini 3.',
                 ),
               const SizedBox(height: 8),
               Text(
