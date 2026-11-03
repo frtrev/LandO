@@ -10,6 +10,9 @@ import '../models/property.dart';
 import '../services/place_search.dart';
 import '../services/property_repository.dart';
 import '../widgets/layer_editor_panel.dart';
+import '../widgets/assistant/property_chat_sheet.dart';
+import '../widgets/assistant/ai_settings_sheet.dart';
+import '../services/assistant/api_key_store.dart';
 import '../widgets/property_layers_sheet.dart';
 
 class MapScreen extends StatefulWidget {
@@ -29,6 +32,7 @@ class MapScreen extends StatefulWidget {
 class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
   late final PropertyController state = PropertyController(widget.repository);
   final search = PlaceSearch();
+  final ApiKeyStore aiKeyStore = SecureApiKeyStore();
   final Map<String, BitmapDescriptor> markerIcons = {};
   final Set<String> pendingIcons = {};
   GoogleMapController? map;
@@ -681,6 +685,35 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
     }
   }
 
+  Future<void> askLando() async {
+    if (state.property == null) {
+      message('Create or open a property first.');
+      return;
+    }
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      showDragHandle: true,
+      builder: (_) => PropertyChatSheet(
+        currentProperty: () => state.property!,
+        repository: widget.repository,
+        keyStore: aiKeyStore,
+      ),
+    );
+  }
+
+  Future<void> aiSettings() async {
+    await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      showDragHandle: true,
+      builder: (_) =>
+          AiSettingsSheet(keyStore: aiKeyStore, repository: widget.repository),
+    );
+  }
+
   Future<void> settings() async {
     await showModalBottomSheet<void>(
       context: context,
@@ -749,6 +782,13 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                         );
                       }
                     },
+                  ),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.auto_awesome_outlined),
+                    title: const Text('LandO assistant settings'),
+                    subtitle: const Text('OpenAI or Gemini · keys and models'),
+                    onTap: aiSettings,
                   ),
                   const SizedBox(height: 16),
                   const Text(
@@ -956,11 +996,19 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
               ),
               Text(
                 p?.name ?? 'Map it. Measure it. Plan it.',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: Theme.of(context).textTheme.labelSmall,
               ),
             ],
           ),
           actions: [
+            if (p != null)
+              IconButton(
+                tooltip: 'Ask LandO about my property',
+                onPressed: busy ? null : askLando,
+                icon: const Icon(Icons.auto_awesome_outlined),
+              ),
             IconButton(
               tooltip: 'Search address',
               onPressed: busy ? null : () => safe(findAddress),

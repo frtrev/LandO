@@ -10,7 +10,7 @@
 - Google Cloud billing and platform Maps keys. Maps and search require connectivity. Saved geometry and calculations live on the device.
 - Address search requires deploying the included server proxy and passing its HTTPS URL to Flutter.
 
-This implementation requires real-device acceptance testing with configured Google Maps keys before Phase 1 can be declared complete. Saved areas and distance paths extend the mapping milestone; driveway/material planning and AI screens are not included. The original brief references Sheet Music Rookie; its source/design was not supplied, so this project uses a standalone Material 3 architecture.
+This implementation requires real-device acceptance testing with configured Google Maps keys before Phase 1 can be declared complete. Saved areas and distance paths extend the mapping milestone; Ask LandO adds read-only property questions and deterministic planning estimates; drawing automation, supplier prices and project-management screens are not included. The original brief references Sheet Music Rookie; its source/design was not supplied, so this project uses a standalone Material 3 architecture.
 
 ## Google Maps configuration
 
@@ -58,6 +58,45 @@ The server includes input limits, a timeout and per-connection-IP request limiti
 
 Unsaved navigation prompts offer Save, Discard, and Keep editing. Invalid geometry can be edited or discarded, but cannot overwrite a valid saved property. A separate recovery draft is written after 300 ms of inactivity while editing and on app suspension/camera idle. Recovery does not replace the explicit save. As with any local storage, immediate process termination before a write completes can lose the latest fraction of a second. Data is local to this installation; uninstalling removes it. Named areas and measurement paths are stored in the same SQLite property record and included in recovery drafts. Existing property records without layers open normally with an empty collection. No database reset or table migration is needed. Incomplete shapes and invalid area polygons prevent an explicit save; finish, fix, or delete them first. Other valid property data remains preserved in its last saved version. Areas and paths are associated with a property but are not clipped to its boundary, subtracted from its acreage, or restricted to being inside it; overlapping areas are measured independently.
 
+## Ask LandO about my property
+
+Open a property, then tap the sparkle button **Ask LandO about my property** in the map's top bar. The chat panel has suggested questions, follow-up conversation, app-calculated result cards and a Stop request action. Close the panel to return to the map.
+
+### Setup
+
+1. Open **Settings → LandO assistant settings** (or **AI settings** inside chat).
+2. Choose **Gemini (Google)** or **OpenAI** in **AI provider**. Enter that provider's own API key and model ID, then press **Save AI settings**. You can save the provider/model before adding a key; chat remains disabled until that provider has a key.
+3. Provider credentials are stored separately in iOS Keychain with device-only, unlocked accessibility or encrypted Android secure storage. No API key is stored in property SQLite records, build flags or source code. A blank key field keeps that provider's stored key. Remove API key deletes only the provider currently shown. Switching providers preserves the other provider's key and model.
+4. Default models are `gemini-3.6-flash` for Gemini and `gpt-5.6-terra` for OpenAI. Model IDs remain editable. Defaults were checked against [Google's Gemini model documentation](https://aistudio.google.com/docs/models/gemini-3.6-flash) and [OpenAI's model documentation](https://developers.openai.com/api/docs/models/gpt-5.6-terra). An existing installation without a provider preference retains OpenAI as its default and continues using its existing key/model without a migration.
+5. Send a question such as “How many acres is my property?”, “How long is my Driveway measurement?”, or “How much gravel for Driveway, 12 feet wide and 4 inches deep?”
+
+**Gemini with an existing Google Cloud project:** create a **Gemini Developer API** key in [Google AI Studio](https://aistudio.google.com/apikey). You can import your existing Cloud project into AI Studio and create the key there; follow [Google's API key/project instructions](https://aistudio.google.com/docs/api-key). The key needs Generative Language API access and the model must be available to your project. Use a separate key from the Google Maps SDK keys. This integration calls `generativelanguage.googleapis.com` using the `x-goog-api-key` header; it does not use Vertex AI endpoints, OAuth/service-account files or your Maps SDK credentials. **No OpenAI key or account is required when Gemini is selected.**
+
+API usage, quota, billing and model availability belong to the selected provider's account/project. LandO never silently falls back to the other provider, and never sends one provider's key to another. Live acceptance still requires a real provider key; automated API tests use mocked HTTP responses and never contact or charge an account. Verify a real response after entering a valid key, including secure key storage across a device restart.
+
+### How answers work
+
+OpenAI uses [Responses function calling](https://developers.openai.com/api/docs/guides/function-calling); Gemini uses the [Generate Content API](https://aistudio.google.com/api-reference/generate-content) with the same local calculation tools. Every question starts by calling the app's property-summary tool against an immutable snapshot of the **current property, including unsaved edits**. Numeric lookup and project calculations run in Dart, independently of the model:
+
+- Property area, perimeter, ordered segments and coordinates.
+- Saved named area measurements and independent open-path lengths.
+- Gravel surface area, volume and US short tons for a saved path or supplied length, width and depth.
+- Topsoil/fill volume for a saved area at a supplied depth.
+- Fence posts and spans for the property boundary, a saved area/path, or a supplied length and maximum spacing.
+- Cost line items, labor, tax and contingency using explicit quantities, currency and user-supplied rates.
+
+The assistant is instructed to ask for missing or ambiguous dimensions, spacing or rates. It has no web access, satellite image input, current supplier prices, legal parcel lookup or authority to edit the map. Invalid geometry returns validation errors instead of totals. Expand the **Calculated by LandO** cards to inspect the actual results, units and assumptions independently of generated prose. Historical cards show when their property snapshot was taken; a new question recalculates against the latest geometry.
+
+Material assumptions: uniform width/depth, no compaction or waste allowance. Gravel density defaults to **1.4 US short tons per cubic yard only as a labeled planning assumption** when no density is supplied; actual density should come from the supplier. Imperial tool dimensions are length/width in feet and depth in inches; metric dimensions are length/width in meters and depth in centimeters. Fence counts are length-based estimates without gates, corners, bracing or terrain allowances. Cost tax applies to materials plus labor; contingency applies after tax. Generated explanations can still be mistaken: the displayed app results are the calculation record.
+
+### Privacy and local history
+
+Sending a question transmits the question, recent conversation and structured property information (including property/layer names and description) directly to your **selected provider** over HTTPS. Switching providers carries the recent conversation to the newly selected provider on your next question; the chat panel identifies the active provider and assistant replies record which provider answered. Exact boundary coordinates are returned when the boundary-detail tool is requested. The assistant sends no property or conversation data before you send a question. OpenAI requests set `store: false`; this disables Responses application-state storage, **not all provider retention**, as described in [OpenAI's data controls](https://developers.openai.com/api/docs/guides/your-data). Gemini uses stateless Generate Content requests without creating a server-side conversation; Google data handling depends on your account and service terms. Neither provider is claimed to have zero retention.
+
+Up to 40 chat messages and their app-calculated result records are saved locally per property, separately from explicit property saves. Up to 24 recent messages are sent as context. Clear chat history deletes that property's local conversation; deleting a property deletes its local chat too. Closing chat or Stop request closes the current request client and ignores late results; already-processed API work may still be billed. History is retained if a request fails, so its question can be retried. Mapping and calculations remain usable with neither provider configured.
+
+The tool loop is bounded to eight requests, sixteen local calls and a two-minute elapsed budget, with per-request timeouts and no automatic billable retries. OpenAI Responses replay tool results and encrypted reasoning within a turn. Gemini replays the complete model content, including thought signatures, and returns matching function-call IDs for tool continuation; hidden thought text is not displayed or saved as an answer. Android app backup is disabled to prevent restoring encrypted credentials without the corresponding Keystore key; property and chat data remain local to the installation.
+
 ## Geometry and architecture
 
 - `lib/models/property.dart`: UUID points with permanent labels; list position is the boundary sequence. Property records include name, description, timestamps, unit preference, full map camera, and a collection of UUID-identified named area/path layers, each with its own ordered coordinates.
@@ -68,7 +107,7 @@ Unsaved navigation prompts offer Save, Discard, and Keep editing. Invalid geomet
 - `lib/controllers/property_controller.dart`: editing, measurements, validation state, explicit saves and recovery drafts.
 - `lib/screens/map_screen.dart`: Google Maps and responsive floating Material 3 panels, separate map and measurement overlays.
 
-No ads, subscription requirement, AI arithmetic, or OpenAI credentials.
+No ads or mandatory subscriptions. Mapping works without AI. No developer-owned AI credentials are embedded in the app.
 
 ## Validation
 
@@ -81,7 +120,7 @@ flutter build apk --debug
 flutter build ios --simulator --no-codesign
 ```
 
-Calculation fixtures in `test/geographiclib_fixtures.json` were generated independently using GeographicLib Python 2.1. They cover equatorial, Texas, concave, antimeridian, high-latitude and large-property polygons, both windings, and assert area against references with tolerance `1e-7 * area + 0.002 m²`, perimeter within 1 mm. Additional tests cover invalid polygons, insertion, unit conversions, independent paths, search error handling, SQLite reopen/draft recovery, multiple-area/path SQLite round trips, legacy property compatibility, invalid-layer save protection and draft recovery, and map UI harnesses covering drawing, saving, reopening, dragging, ordered insertion and small landscape layouts. The harness does not simulate native map gestures or imagery. Regenerate fixtures with `tools/generate_geometry_fixtures.py` after installing `geographiclib==2.1` in a temporary Python environment.
+Calculation fixtures in `test/geographiclib_fixtures.json` were generated independently using GeographicLib Python 2.1. They cover equatorial, Texas, concave, antimeridian, high-latitude and large-property polygons, both windings, and assert area against references with tolerance `1e-7 * area + 0.002 m²`, perimeter within 1 mm. Additional tests cover invalid polygons, insertion, unit conversions, independent paths, search error handling, SQLite reopen/draft recovery, multiple-area/path SQLite round trips, legacy property compatibility, invalid-layer save protection and draft recovery, and map UI harnesses covering drawing, saving, reopening, dragging, ordered insertion and small landscape layouts. Assistant tests cover deterministic project quantities/costs, tool argument errors, stateless Responses continuation, bounded loops, credential redaction, per-property history, cancellation, secure-settings UI and chat layout. Gemini tests cover complete function-call/thought-signature replay, parallel tool results, errors and truncation; provider tests cover isolated secure key slots, legacy OpenAI compatibility, Gemini-only setup and provider/model switching. The harness does not simulate native map gestures or imagery. Regenerate fixtures with `tools/generate_geometry_fixtures.py` after installing `geographiclib==2.1` in a temporary Python environment.
 
 ### Device acceptance still required
 

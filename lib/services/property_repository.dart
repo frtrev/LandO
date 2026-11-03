@@ -61,6 +61,11 @@ class PropertyRepository {
       await txn.delete('properties', where: 'id = ?', whereArgs: [id]);
       await txn.delete(
         'preferences',
+        where: 'key = ?',
+        whereArgs: ['chat:$id'],
+      );
+      await txn.delete(
+        'preferences',
         where: 'key = ? AND value = ?',
         whereArgs: ['lastProperty', id],
       );

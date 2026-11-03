@@ -73,7 +73,12 @@ void main() {
       controller.create('South pasture', List.from(points), 30, -98, 17);
       await controller.save();
       expect(await repo.list(), hasLength(2));
+      await repo.setPreference(
+        'chat:$firstId',
+        '[{"role":"user","text":"Area?"}]',
+      );
       await repo.delete(firstId);
+      expect(await repo.preference('chat:$firstId'), isNull);
       expect(await repo.list(), hasLength(1));
       controller.dispose();
       await repo.db.close();
