@@ -267,6 +267,33 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
     }
   }
 
+  void showCoordinateLockMessage() {
+    if (!mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.removeCurrentSnackBar();
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(
+          editing
+              ? 'Property coordinates unlocked'
+              : 'Property coordinates locked',
+        ),
+        duration: const Duration(seconds: 2),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  void toggleCoordinateLock() {
+    setState(() => editing = !editing);
+    showCoordinateLockMessage();
+  }
+
+  void moveBoundaryPoint(String id, LatLng position) {
+    if (!editing || busy || measuring) return;
+    state.move(id, position.latitude, position.longitude);
+  }
+
   void message(String text) {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
@@ -682,6 +709,10 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
   }
 
   Future<void> editPoint(BoundaryPoint point, {String? layerId}) async {
+    if (layerId == null && !editing) {
+      showCoordinateLockMessage();
+      return;
+    }
     final lat = TextEditingController(text: point.latitude.toStringAsFixed(8));
     final lon = TextEditingController(text: point.longitude.toStringAsFixed(8));
     String? error;
@@ -780,6 +811,10 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
       return;
     }
     final layer = state.activeLayer;
+    if (layer == null && !editing) {
+      showCoordinateLockMessage();
+      return;
+    }
     final points = layer?.points ?? property.points;
     if (points.length < 2) {
       message('Tap the map to add at least two points first.');
@@ -818,8 +853,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
     if (layer != null) {
       state.insertLayerPoint(layer.id, index);
     } else {
-      state.insertAfter(index);
-      setState(() => editing = true);
+      if (editing) state.insertAfter(index);
     }
   }
 
@@ -1008,7 +1042,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                   tooltip: editing
                       ? 'Lock boundary editing'
                       : 'Unlock boundary editing',
-                  onPressed: () => setState(() => editing = !editing),
+                  onPressed: toggleCoordinateLock,
                   icon: Icon(
                     editing ? Icons.lock_open_outlined : Icons.lock_outline,
                   ),
@@ -1078,7 +1112,9 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                       title: Text('${p.points.length} boundary points'),
                       subtitle: Text(
                         p.description.isEmpty
-                            ? 'Tap a point to edit its coordinates.'
+                            ? (editing
+                                  ? 'Tap a point to edit its coordinates.'
+                                  : 'Property coordinates locked. Unlock to edit.')
                             : p.description,
                       ),
                       trailing: PopupMenuButton<String>(
@@ -1133,7 +1169,9 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                         trailing: IconButton(
                           tooltip: 'Insert after ${point.label}',
                           icon: const Icon(Icons.add_location_alt_outlined),
-                          onPressed: () => state.insertAfter(i),
+                          onPressed: editing
+                              ? () => state.insertAfter(i)
+                              : null,
                         ),
                       );
                     }),
@@ -1300,16 +1338,10 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                             editPoint(point);
                           }
                         },
-                        onDrag: (position) => state.move(
-                          point.id,
-                          position.latitude,
-                          position.longitude,
-                        ),
-                        onDragEnd: (position) => state.move(
-                          point.id,
-                          position.latitude,
-                          position.longitude,
-                        ),
+                        onDrag: (position) =>
+                            moveBoundaryPoint(point.id, position),
+                        onDragEnd: (position) =>
+                            moveBoundaryPoint(point.id, position),
                       ),
                   if (state.activeLayer != null)
                     for (final point in state.activeLayer!.points)
@@ -1531,7 +1563,9 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                 tool(
                   Icons.add_location_alt_outlined,
                   'Add point',
-                  p == null ? null : () => safe(insertPoint),
+                  p == null || (!measuring && !editing)
+                      ? null
+                      : () => safe(insertPoint),
                 ),
                 tool(
                   Icons.straighten,

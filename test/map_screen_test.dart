@@ -114,6 +114,68 @@ void main() {
       expect(find.text('Total area'), findsOneWidget);
       expect(map.objects.markers, hasLength(4));
       expect(map.objects.polygons.single.points, hasLength(4));
+      final original = map.objects.markers.first;
+      final coordinates = map.objects.polygons.single.points.toList();
+      await tester.tap(find.byTooltip('Lock boundary editing'));
+      await tester.pumpAndSettle();
+      expect(find.text('Property coordinates locked'), findsOneWidget);
+      expect(map.objects.markers.every((m) => !m.draggable), true);
+      map.objects.markers.first.onTap!();
+      await tester.pumpAndSettle();
+      expect(find.byType(AlertDialog), findsNothing);
+      map.objects.markers.first.infoWindow.onTap!();
+      original.onDragEnd!(const LatLng(30.002, -98));
+      await tester.pumpAndSettle();
+      expect(map.objects.polygons.single.points, coordinates);
+      expect(
+        tester
+            .widget<TextButton>(find.widgetWithText(TextButton, 'Add point'))
+            .onPressed,
+        isNull,
+      );
+      await tester.tap(find.text('Details'));
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(
+        find.byTooltip('Insert after A'),
+        100,
+        scrollable: find
+            .descendant(
+              of: find.byType(ListView),
+              matching: find.byType(Scrollable),
+            )
+            .first,
+      );
+      expect(
+        tester
+            .widget<IconButton>(
+              find.byWidgetPredicate(
+                (w) => w is IconButton && w.tooltip == 'Insert after A',
+              ),
+            )
+            .onPressed,
+        isNull,
+      );
+      final row = find
+          .ancestor(of: find.text('A').last, matching: find.byType(ListTile))
+          .first;
+      tester.widget<ListTile>(row).onTap!();
+      await tester.pumpAndSettle();
+      expect(find.byType(AlertDialog), findsNothing);
+      await tester.tap(find.text('Details'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Unlock boundary editing'));
+      await tester.pumpAndSettle();
+      expect(find.text('Property coordinates unlocked'), findsOneWidget);
+      expect(map.objects.markers.every((m) => m.draggable), true);
+      await tester.pump(const Duration(seconds: 3));
+      await tester.pumpAndSettle();
+      expect(find.text('Property coordinates unlocked'), findsNothing);
+      map.objects.markers.first.onTap!();
+      await tester.pumpAndSettle();
+      expect(find.byType(AlertDialog), findsOneWidget);
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+
       await tester.tap(find.byTooltip('Hide boundary panel'));
       await tester.pumpAndSettle();
       expect(find.text('Total area'), findsNothing);

@@ -179,6 +179,6 @@ The versioned JSON backup includes both SQLite tables: properties with their bou
 
 ### Map panel and measurement labels
 
-The boundary card has a **Hide boundary panel** control. The bottom **Boundary** button toggles the entire card; **Details** reopens it with details when hidden. Hiding the card leaves mapped geometry visible, and boundary editing can be locked independently using the lock control in the card.
+The boundary card has a **Hide boundary panel** control. The bottom **Boundary** button toggles the entire card; **Details** reopens it with details when hidden. Hiding the card leaves mapped geometry visible, and boundary editing can be locked independently using the lock control in the card. Lock/unlock displays a two-second fading message. While locked, boundary marker dragging, marker/info-window and Details-row coordinate editing, and boundary-point insertion are blocked.
 
 The map's label button shows/hides compact name-and-value badges for valid areas and measurement paths. Badges update as shapes or units change: acres/feet for imperial properties and hectares/meters for metric properties. Area anchors use an interior span (including concave polygons and longitude wrapping); path anchors follow half the full geodesic path length. Unfinished/invalid shapes do not show numeric badges. These controls change the current view without changing saved geometry.
