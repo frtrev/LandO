@@ -114,6 +114,22 @@ void main() {
       expect(find.text('Total area'), findsOneWidget);
       expect(map.objects.markers, hasLength(4));
       expect(map.objects.polygons.single.points, hasLength(4));
+      await tester.tap(find.byTooltip('Hide boundary panel'));
+      await tester.pumpAndSettle();
+      expect(find.text('Total area'), findsNothing);
+      expect(map.objects.polygons.single.points, hasLength(4));
+      await tester.tap(find.text('Boundary'));
+      await tester.pumpAndSettle();
+      expect(find.text('Total area'), findsOneWidget);
+      await tester.tap(find.text('Boundary'));
+      await tester.pumpAndSettle();
+      expect(find.text('Total area'), findsNothing);
+      await tester.tap(find.text('Details'));
+      await tester.pumpAndSettle();
+      expect(find.text('Total area'), findsOneWidget);
+      await tester.tap(find.text('Details'));
+      await tester.pumpAndSettle();
+
       await tester.tap(find.text('Add point'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 350));
@@ -281,6 +297,30 @@ void main() {
       await mount();
       expect(map.objects.polygons, hasLength(2));
       expect(map.objects.polylines, hasLength(2));
+      expect(
+        map.objects.markers.where(
+          (m) => m.markerId.value.startsWith('measurement-label-'),
+        ),
+        hasLength(3),
+      );
+      await tester.tap(find.byTooltip('Hide area & distance labels'));
+      await tester.pumpAndSettle();
+      expect(
+        map.objects.markers.where(
+          (m) => m.markerId.value.startsWith('measurement-label-'),
+        ),
+        isEmpty,
+      );
+      expect(map.objects.polygons, hasLength(2));
+      expect(map.objects.polylines, hasLength(2));
+      await tester.tap(find.byTooltip('Show area & distance labels'));
+      await tester.pumpAndSettle();
+      expect(
+        map.objects.markers.where(
+          (m) => m.markerId.value.startsWith('measurement-label-'),
+        ),
+        hasLength(3),
+      );
       await tester.tap(find.text('Layers'));
       await animateModal();
       expect(find.text('Garden'), findsOneWidget);
@@ -292,8 +332,10 @@ void main() {
       await animateModal();
       await tester.tap(find.text('Driveway'));
       await tester.pumpAndSettle();
-      expect(map.objects.markers, hasLength(2));
-      map.objects.markers.first.onDragEnd!(const LatLng(30.0001, -98));
+      expect(map.objects.markers.where((m) => m.draggable), hasLength(2));
+      map.objects.markers.firstWhere((m) => m.draggable).onDragEnd!(
+        const LatLng(30.0001, -98),
+      );
       await tester.pumpAndSettle();
       expect(find.text('Driveway'), findsOneWidget);
       await tester.binding.setSurfaceSize(const Size(667, 375));

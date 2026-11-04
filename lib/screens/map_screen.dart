@@ -8,6 +8,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import '../controllers/property_controller.dart';
 import '../models/property.dart';
 import '../services/place_search.dart';
+import '../services/map_measurement_label.dart';
 import '../services/property_repository.dart';
 import '../widgets/layer_editor_panel.dart';
 import '../widgets/data_transfer_sheet.dart';
@@ -47,6 +48,11 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
       details = false,
       busy = false,
       allowPop = false;
+  bool boundaryVisible = true;
+  bool showMapLabels = true;
+  List<MapMeasurementLabel> measurementLabels = [];
+  final Map<String, BitmapDescriptor> measurementIcons = {};
+  final Set<String> pendingMeasurementIcons = {};
   bool _locating = false;
   bool _transferring = false;
   int _navigationVersion = 0;
@@ -100,6 +106,23 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
   }
 
   void refresh() {
+    measurementLabels = [
+      for (final layer in state.property?.layers ?? <PropertyLayer>[])
+        if ((state.layerErrors[layer.id] ?? []).isEmpty)
+          ?MapMeasurementLabel.forLayer(
+            layer,
+            metric: state.property!.metric,
+            geometry: state.geometry,
+            areaResult: state.areaResults[layer.id],
+            distance: state.pathLengths[layer.id],
+          ),
+    ];
+    for (final label in measurementLabels) {
+      if (!measurementIcons.containsKey(label.iconKey) &&
+          pendingMeasurementIcons.add(label.iconKey)) {
+        buildMeasurementIcon(label);
+      }
+    }
     for (final point in state.property?.points ?? <BoundaryPoint>[]) {
       if (!markerIcons.containsKey(point.label) &&
           pendingIcons.add(point.label)) {
@@ -109,6 +132,69 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
     if (mounted) {
       setState(() {});
     }
+  }
+
+  Future<void> buildMeasurementIcon(MapMeasurementLabel label) async {
+    final title = TextPainter(
+      text: TextSpan(
+        text: label.name,
+        style: const TextStyle(color: Color(0xffe5eee8), fontSize: 10),
+      ),
+      textDirection: TextDirection.ltr,
+      maxLines: 1,
+      ellipsis: '…',
+    )..layout(maxWidth: 145);
+    final value = TextPainter(
+      text: TextSpan(
+        text: label.value,
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    final width = math.max(title.width, value.width) + 18;
+    final height = title.height + value.height + 12;
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder)..scale(2);
+    final rect = RRect.fromRectAndRadius(
+      Rect.fromLTWH(.5, .5, width - 1, height - 1),
+      const Radius.circular(7),
+    );
+    canvas.drawRRect(rect, Paint()..color = const Color(0xe620332c));
+    canvas.drawRRect(
+      rect,
+      Paint()
+        ..color = (label.area ? Colors.orangeAccent : Colors.lightBlueAccent)
+            .withValues(alpha: .8)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1,
+    );
+    title.paint(canvas, Offset((width - title.width) / 2, 5));
+    value.paint(canvas, Offset((width - value.width) / 2, title.height + 6));
+    final picture = recorder.endRecording();
+    final image = await picture.toImage(
+      (width * 2).ceil(),
+      (height * 2).ceil(),
+    );
+    final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
+    image.dispose();
+    picture.dispose();
+    pendingMeasurementIcons.remove(label.iconKey);
+    if (!mounted || bytes == null) return;
+    setState(() {
+      if (measurementIcons.length >= 128) {
+        final active = measurementLabels.map((l) => l.iconKey).toSet();
+        measurementIcons.removeWhere((key, _) => !active.contains(key));
+      }
+      measurementIcons[label.iconKey] = BitmapDescriptor.bytes(
+        bytes.buffer.asUint8List(),
+        width: width,
+        height: height,
+      );
+    });
   }
 
   Future<void> buildMarker(String label) async {
@@ -919,6 +1005,20 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                     child: Text('Unsaved'),
                   ),
                 IconButton(
+                  tooltip: editing
+                      ? 'Lock boundary editing'
+                      : 'Unlock boundary editing',
+                  onPressed: () => setState(() => editing = !editing),
+                  icon: Icon(
+                    editing ? Icons.lock_open_outlined : Icons.lock_outline,
+                  ),
+                ),
+                IconButton(
+                  tooltip: 'Hide boundary panel',
+                  onPressed: () => setState(() => boundaryVisible = false),
+                  icon: const Icon(Icons.close),
+                ),
+                IconButton(
                   tooltip: details ? 'Collapse details' : 'Expand details',
                   onPressed: () => setState(() => details = !details),
                   icon: Icon(details ? Icons.expand_less : Icons.expand_more),
@@ -1152,7 +1252,9 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                 zoomControlsEnabled: false,
                 mapToolbarEnabled: false,
                 padding: EdgeInsets.only(
-                  bottom: p == null ? 100 : 200,
+                  bottom: p == null
+                      ? 100
+                      : (measuring || boundaryVisible ? 200 : 12),
                   top: 12,
                 ),
                 onTap: (point) {
@@ -1161,6 +1263,19 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                   }
                 },
                 markers: {
+                  if (showMapLabels)
+                    for (final label in measurementLabels)
+                      if (measurementIcons[label.iconKey] != null)
+                        Marker(
+                          markerId: MarkerId('measurement-label-${label.id}'),
+                          position: LatLng(label.latitude, label.longitude),
+                          icon: measurementIcons[label.iconKey]!,
+                          anchor: label.area
+                              ? const Offset(.5, .5)
+                              : const Offset(.5, 1.1),
+                          zIndexInt: 1,
+                          consumeTapEvents: true,
+                        ),
                   if (!measuring)
                     for (final point in points)
                       Marker(
@@ -1293,6 +1408,20 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                         onPressed: centerProperty,
                         child: const Icon(Icons.center_focus_strong),
                       ),
+                    if (p != null)
+                      FloatingActionButton.small(
+                        heroTag: 'map-labels',
+                        tooltip: showMapLabels
+                            ? 'Hide area & distance labels'
+                            : 'Show area & distance labels',
+                        onPressed: () =>
+                            setState(() => showMapLabels = !showMapLabels),
+                        child: Icon(
+                          showMapLabels
+                              ? Icons.label
+                              : Icons.label_off_outlined,
+                        ),
+                      ),
                   ],
                 ),
               ),
@@ -1336,7 +1465,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                                 index,
                               ),
                             ),
-                          if (p != null && !measuring)
+                          if (p != null && !measuring && boundaryVisible)
                             summary()
                           else if (p == null)
                             Card(
@@ -1389,15 +1518,15 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                   () => safe(properties),
                 ),
                 tool(
-                  editing ? Icons.edit_location_alt : Icons.lock_outline,
+                  Icons.edit_location_alt,
                   'Boundary',
                   p == null
                       ? null
                       : () => setState(() {
-                          editing = measuring ? true : !editing;
+                          boundaryVisible = measuring ? true : !boundaryVisible;
                           state.finishLayer();
                         }),
-                  active: editing && p != null && !measuring,
+                  active: boundaryVisible && p != null && !measuring,
                 ),
                 tool(
                   Icons.add_location_alt_outlined,
@@ -1424,10 +1553,11 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                   p == null
                       ? null
                       : () => setState(() {
-                          details = !details;
+                          details = boundaryVisible ? !details : true;
+                          boundaryVisible = true;
                           state.finishLayer();
                         }),
-                  active: details && !measuring,
+                  active: details && boundaryVisible && !measuring,
                 ),
               ],
             ),
