@@ -23,7 +23,10 @@ class PropertyController extends ChangeNotifier {
     final data = dirty && property != null
         ? jsonEncode(property!.toJson())
         : '';
-    _writes = _writes.then((_) => repository.setPreference('draft', data));
+    _writes = _writes.then((_) async {
+      await repository.setPreference('draft', data);
+      storageError = null;
+    });
     return _writes = _writes.catchError((Object error) {
       storageError = 'Could not preserve recovery draft: $error';
     });
@@ -91,6 +94,17 @@ class PropertyController extends ChangeNotifier {
 
   PropertyController(this.repository, {GeometryService? geometry})
     : geometry = geometry ?? GeometryService();
+  Future<void> reloadAfterRestore() async {
+    _draftTimer?.cancel();
+    await _writes;
+    property = null;
+    dirty = false;
+    activeLayerId = null;
+    storageError = null;
+    await restore();
+    _calculate();
+  }
+
   Future<void> restore() async {
     final draft = await repository.preference('draft');
     if (draft != null && draft.isNotEmpty) {

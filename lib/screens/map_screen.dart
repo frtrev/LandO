@@ -10,6 +10,7 @@ import '../models/property.dart';
 import '../services/place_search.dart';
 import '../services/property_repository.dart';
 import '../widgets/layer_editor_panel.dart';
+import '../widgets/data_transfer_sheet.dart';
 import '../widgets/assistant/property_chat_sheet.dart';
 import '../widgets/assistant/ai_settings_sheet.dart';
 import '../services/assistant/api_key_store.dart';
@@ -47,6 +48,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
       busy = false,
       allowPop = false;
   bool _locating = false;
+  bool _transferring = false;
   int _navigationVersion = 0;
   bool get measuring => state.activeLayer != null;
   String length(double meters) => state.property?.metric == true
@@ -87,7 +89,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
 
   Future<void> restoreTheme() async {
     final saved = await widget.repository.preference('theme');
-    if (saved != null && mounted) {
+    if (mounted) {
       widget.onTheme(
         ThemeMode.values.firstWhere(
           (v) => v.name == saved,
@@ -171,6 +173,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
   }
 
   Future<void> recoverDraft() async {
+    if (_transferring) return;
     captureCamera();
     await state.persistDraft();
     if (state.storageError != null) {
@@ -763,6 +766,33 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
     );
   }
 
+  Future<void> transferData() async {
+    await recoverDraft();
+    if (state.storageError != null || !mounted) return;
+    _transferring = true;
+    _navigationVersion++;
+    try {
+      final restored = await showModalBottomSheet<bool>(
+        context: context,
+        isScrollControlled: true,
+        useSafeArea: true,
+        showDragHandle: true,
+        isDismissible: false,
+        enableDrag: false,
+        builder: (_) => DataTransferSheet(repository: widget.repository),
+      );
+      if (restored == true) {
+        _navigationVersion++;
+        await state.reloadAfterRestore();
+        await restoreTheme();
+        centerProperty();
+        message('Backup restored.');
+      }
+    } finally {
+      _transferring = false;
+    }
+  }
+
   Future<void> settings() async {
     await showModalBottomSheet<void>(
       context: context,
@@ -838,6 +868,18 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                     title: const Text('LandO assistant settings'),
                     subtitle: const Text('Configure your LandO assistant'),
                     onTap: aiSettings,
+                  ),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.backup_outlined),
+                    title: const Text('Backup & restore'),
+                    subtitle: const Text(
+                      'Save, share, or restore all app data',
+                    ),
+                    onTap: () {
+                      Navigator.pop(c);
+                      safe(transferData);
+                    },
                   ),
                   const SizedBox(height: 16),
                   const Text(
@@ -1099,6 +1141,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                 },
                 onCameraMove: (position) => camera = position,
                 onCameraIdle: () {
+                  if (_transferring) return;
                   captureCamera();
                   if (state.dirty) {
                     state.persistDraft();
