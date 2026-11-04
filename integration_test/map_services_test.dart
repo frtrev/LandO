@@ -29,7 +29,8 @@ void main() {
       final map = tester.widget<GoogleMap>(find.byType(GoogleMap));
       if ((map.initialCameraPosition.target.latitude - 32.7767).abs() <
               .00001 &&
-          (map.initialCameraPosition.target.longitude + 96.7970).abs() < .00001) {
+          (map.initialCameraPosition.target.longitude + 96.7970).abs() <
+              .00001) {
         break;
       }
     }
@@ -56,8 +57,9 @@ void main() {
         longitude: -97.7431,
       );
       expect(results, isNotEmpty);
-      expect(results.first.latitude, closeTo(30.2747, .05));
-      expect(results.first.longitude, closeTo(-97.7404, .05));
+      final resolved = await search.resolve(results.first);
+      expect(resolved.latitude, closeTo(30.2747, .05));
+      expect(resolved.longitude, closeTo(-97.7404, .05));
       debugPrint(
         'NATIVE_PLACES_PASSED: ${results.length} result(s), ${results.first.name}',
       );

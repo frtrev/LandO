@@ -35,6 +35,79 @@ void main() {
     },
   );
   test(
+    'address suggestions resolve only the selected place and ignore a distant map bias',
+    () async {
+      final calls = <String>[];
+      messenger.setMockMethodCallHandler(channel, (call) async {
+        calls.add(call.method);
+        if (call.method == 'search') {
+          expect(call.arguments, {
+            'query': '123 Example Drive Testville TN 38017',
+          });
+          return [
+            {
+              'name': '123 Example Drive, Testville, TN',
+              'placeId': 'selected-id',
+            },
+            {
+              'name': '123 Example Drive, Other City, TN',
+              'placeId': 'other-id',
+            },
+          ];
+        }
+        expect(call.method, 'resolve');
+        expect(call.arguments['placeId'], 'selected-id');
+        return {
+          'name': '123 Example Drive, Testville, TN',
+          'placeId': 'selected-id',
+          'latitude': 35.05,
+          'longitude': -89.66,
+        };
+      });
+      final service = PlaceSearch(endpoint: '');
+      final results = await service.search(
+        '123 Example Drive Testville TN 38017',
+        latitude: 32.7,
+        longitude: -96.7,
+      );
+      expect(calls, ['search']);
+      expect(results.first.hasCoordinates, false);
+      final selected = await service.resolve(results.first);
+      expect(selected.hasCoordinates, true);
+      expect(selected.latitude, 35.05);
+      expect(calls, ['search', 'resolve']);
+      expect(await service.resolve(selected), same(selected));
+      expect(calls, ['search', 'resolve']);
+      service.dispose();
+    },
+  );
+  test(
+    'expired selection asks for a new search without exposing native errors',
+    () async {
+      messenger.setMockMethodCallHandler(
+        channel,
+        (_) async => throw PlatformException(
+          code: 'places_selection_expired',
+          message: 'private SDK payload',
+        ),
+      );
+      final service = PlaceSearch(endpoint: '');
+      await expectLater(
+        service.resolve(
+          const PlaceResult('A suggestion', null, null, placeId: 'old-id'),
+        ),
+        throwsA(
+          isA<PlaceSearchException>().having(
+            (e) => e.message,
+            'retry guidance',
+            allOf(contains('Search again'), isNot(contains('private'))),
+          ),
+        ),
+      );
+      service.dispose();
+    },
+  );
+  test(
     'native configuration errors are actionable and never echo SDK credentials',
     () async {
       messenger.setMockMethodCallHandler(

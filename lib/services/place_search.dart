@@ -6,9 +6,23 @@ import 'package:http/http.dart' as http;
 
 class PlaceResult {
   final String name;
-  final double latitude;
-  final double longitude;
-  const PlaceResult(this.name, this.latitude, this.longitude);
+  final double? latitude;
+  final double? longitude;
+  final String? placeId;
+  const PlaceResult(this.name, this.latitude, this.longitude, {this.placeId});
+  bool get hasCoordinates =>
+      latitude != null &&
+      longitude != null &&
+      latitude!.isFinite &&
+      longitude!.isFinite &&
+      latitude!.abs() <= 90 &&
+      longitude!.abs() <= 180;
+  factory PlaceResult.fromNative(Map<dynamic, dynamic> data) => PlaceResult(
+    data['name'] as String,
+    (data['latitude'] as num?)?.toDouble(),
+    (data['longitude'] as num?)?.toDouble(),
+    placeId: data['placeId'] as String?,
+  );
 }
 
 /// Uses native Google Places SDKs by default. An explicitly configured HTTPS
@@ -34,44 +48,25 @@ class PlaceSearch {
       );
     }
     if (endpoint.trim().isEmpty) {
-      try {
-        final results = await channel
-            .invokeListMethod<dynamic>('search', {
-              'query': query,
-              if (latitude != null && longitude != null) 'latitude': latitude,
-              if (latitude != null && longitude != null) 'longitude': longitude,
-            })
-            .timeout(const Duration(seconds: 20));
-        return (results ?? []).map((item) {
-          final place = Map<String, dynamic>.from(item as Map);
-          return PlaceResult(
-            place['name'] as String,
-            (place['latitude'] as num).toDouble(),
-            (place['longitude'] as num).toDouble(),
-          );
-        }).toList();
-      } on MissingPluginException {
-        throw const PlaceSearchException(
-          'Address search is available in the iOS and Android app. Rebuild and reinstall the app after updating.',
-        );
-      } on PlatformException catch (error) {
-        if (error.code == 'places_not_configured') {
-          throw const PlaceSearchException(
-            'Configure a Google Maps/Places key for this app build to enable address search.',
-          );
-        }
-        final details = error.details;
-        throw PlaceSearchException(
-          'Google Places search could not complete. Check your connection. If it persists, enable Places API (New), billing, and Places access for this app’s key in Google Cloud.',
-          statusCode: details is Map && details['statusCode'] is int
-              ? details['statusCode'] as int
-              : null,
-        );
-      } on TimeoutException {
-        throw const PlaceSearchException(
-          'Address search timed out. Check your connection and try again.',
-        );
-      }
+      final useBias =
+          !query.contains(',') && !RegExp(r'^\d+\b').hasMatch(query);
+      final results =
+          await _native('search', {
+                'query': query,
+                if (useBias && latitude != null && longitude != null)
+                  'latitude': latitude,
+                if (useBias && latitude != null && longitude != null)
+                  'longitude': longitude,
+              })
+              as List? ??
+          [];
+      return results
+          .map((item) => PlaceResult.fromNative(item as Map))
+          .where(
+            (place) =>
+                place.hasCoordinates || place.placeId?.isNotEmpty == true,
+          )
+          .toList();
     }
     final uri = Uri.tryParse(endpoint);
     if (uri == null || uri.scheme != 'https' || uri.host.isEmpty) {
@@ -101,6 +96,62 @@ class PlaceSearch {
         (location['longitude'] as num).toDouble(),
       );
     }).toList();
+  }
+
+  /// Fetch coordinates only for the result the user selected. Autocomplete
+  /// suggestions are not coordinates and must never be treated as (0, 0).
+  Future<PlaceResult> resolve(PlaceResult place) async {
+    if (place.hasCoordinates) return place;
+    if (place.placeId == null || place.placeId!.isEmpty) {
+      throw const PlaceSearchException(
+        'No map location was returned for this result. Try a more complete address.',
+      );
+    }
+    final data = await _native('resolve', {
+      'placeId': place.placeId,
+      'name': place.name,
+    });
+    final resolved = PlaceResult.fromNative(data as Map);
+    if (!resolved.hasCoordinates) {
+      throw const PlaceSearchException(
+        'No map location was returned for this result. Try a more complete address.',
+      );
+    }
+    return resolved;
+  }
+
+  Future<dynamic> _native(String method, Map<String, dynamic> arguments) async {
+    try {
+      return await channel
+          .invokeMethod<dynamic>(method, arguments)
+          .timeout(const Duration(seconds: 20));
+    } on MissingPluginException {
+      throw const PlaceSearchException(
+        'Address search is available in the iOS and Android app. Rebuild and reinstall the app after updating.',
+      );
+    } on PlatformException catch (error) {
+      if (error.code == 'places_selection_expired') {
+        throw const PlaceSearchException(
+          'That search result has expired. Search again and select the address.',
+        );
+      }
+      if (error.code == 'places_not_configured') {
+        throw const PlaceSearchException(
+          'Configure a Google Maps/Places key for this app build to enable address search.',
+        );
+      }
+      final details = error.details;
+      throw PlaceSearchException(
+        'Google Places search could not complete. Check your connection. If it persists, enable Places API (New), billing, and Places access for this app’s key in Google Cloud.',
+        statusCode: details is Map && details['statusCode'] is int
+            ? details['statusCode'] as int
+            : null,
+      );
+    } on TimeoutException {
+      throw const PlaceSearchException(
+        'Address search timed out. Check your connection and try again.',
+      );
+    }
   }
 
   void dispose() => client.close();

@@ -459,7 +459,9 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
       return;
     }
     if (results.isEmpty) {
-      message('No places found. Try a more complete address.');
+      message(
+        'Google did not return a matching address or place. You can try a postal code or pan to the location.',
+      );
       return;
     }
     final place = await showModalBottomSheet<PlaceResult>(
@@ -482,8 +484,10 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
       ),
     );
     if (place != null && mounted) {
+      final resolved = await search.resolve(place);
+      if (!mounted) return;
       camera = CameraPosition(
-        target: LatLng(place.latitude, place.longitude),
+        target: LatLng(resolved.latitude!, resolved.longitude!),
         zoom: 18,
       );
       await map?.animateCamera(CameraUpdate.newCameraPosition(camera));
