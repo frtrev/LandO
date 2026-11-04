@@ -57,9 +57,7 @@ class MapMeasurementLabel {
       return MapMeasurementLabel(
         id: layer.id,
         name: layer.name,
-        value: metric
-            ? '${areaResult!.hectares!.toStringAsFixed(3)} ha'
-            : '${areaResult!.acres!.toStringAsFixed(3)} acres',
+        value: layer.tagUnit(metric: metric).format(areaResult!.squareMeters!),
         latitude: lat,
         longitude: ((left + right) / 2 + 540) % 360 - 180,
         area: true,
@@ -83,9 +81,7 @@ class MapMeasurementLabel {
         return MapMeasurementLabel(
           id: layer.id,
           name: layer.name,
-          value: metric
-              ? '${distance.toStringAsFixed(1)} m'
-              : '${(distance / 0.3048).toStringAsFixed(1)} ft',
+          value: layer.tagUnit(metric: metric).format(distance),
           latitude: position.lat,
           longitude: position.lon,
           area: false,

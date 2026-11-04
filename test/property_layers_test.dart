@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:lando/controllers/property_controller.dart';
 import 'package:lando/models/property.dart';
+import 'package:lando/models/tag_unit.dart';
 import 'package:lando/services/property_repository.dart';
 
 List<BoundaryPoint> boundary() => [
@@ -47,6 +48,82 @@ void main() {
     final old = controller.property!.toJson()..remove('layers');
     expect(Property.fromJson(old).layers, isEmpty);
   });
+  test(
+    'layer visibility survives saving and reopening without changing geometry',
+    () async {
+      final layer = controller.startLayer(LayerKind.distance, 'Fence');
+      draw([
+        [30, -98],
+        [30.001, -98],
+      ]);
+      final originalPoints = layer.points.map((p) => p.toJson()).toList();
+      final originalLength = controller.pathLengths[layer.id];
+      final legacy = layer.toJson()..remove('visible');
+      expect(PropertyLayer.fromJson(legacy).visible, true);
+      controller.toggleLayerVisibility(layer.id);
+      expect(layer.visible, false);
+      expect(controller.activeLayer, isNull);
+      expect(controller.pathLengths[layer.id], originalLength);
+      expect(layer.points.map((p) => p.toJson()).toList(), originalPoints);
+      await controller.save();
+      controller.dispose();
+      await repo.db.close();
+      repo = await PropertyRepository.open(
+        databasePath: path,
+        factory: databaseFactoryFfi,
+      );
+      controller = PropertyController(repo);
+      await controller.restore();
+      expect(controller.property!.layers.single.visible, false);
+      controller.selectLayer(layer.id);
+      expect(controller.activeLayer!.visible, true);
+      expect(controller.dirty, true);
+    },
+  );
+
+  test(
+    'tag units survive draft recovery, saved reopening and unit-system switches',
+    () async {
+      final layer = controller.startLayer(LayerKind.distance, 'Fence');
+      draw([
+        [30, -98],
+        [30.001, -98],
+      ]);
+      final length = controller.pathLengths[layer.id];
+      controller.cycleLayerTagUnit(layer.id);
+      expect(layer.tagUnit(metric: false), TagUnit.yards);
+      controller.property!.metric = true;
+      controller.cycleLayerTagUnit(layer.id);
+      expect(layer.tagUnit(metric: true), TagUnit.centimeters);
+      await controller.persistDraft();
+      controller.dispose();
+      controller = PropertyController(repo);
+      await controller.restore();
+      expect(
+        controller.property!.layers.single.tagUnit(metric: false),
+        TagUnit.yards,
+      );
+      expect(
+        controller.property!.layers.single.tagUnit(metric: true),
+        TagUnit.centimeters,
+      );
+      expect(controller.pathLengths[layer.id], length);
+      await controller.save();
+      controller.dispose();
+      await repo.db.close();
+      repo = await PropertyRepository.open(
+        databasePath: path,
+        factory: databaseFactoryFfi,
+      );
+      controller = PropertyController(repo);
+      await controller.restore();
+      final restored = controller.property!.layers.single;
+      expect(restored.tagUnit(metric: false), TagUnit.yards);
+      expect(restored.tagUnit(metric: true), TagUnit.centimeters);
+      expect(controller.dirty, false);
+    },
+  );
+
   test(
     'multiple independent areas and open paths survive SQLite reopen',
     () async {

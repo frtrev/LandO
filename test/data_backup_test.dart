@@ -7,6 +7,7 @@ import 'package:lando/controllers/property_controller.dart';
 import 'package:lando/models/chat_conversation.dart';
 import 'package:lando/models/chat_message.dart';
 import 'package:lando/models/property.dart';
+import 'package:lando/models/tag_unit.dart';
 import 'package:lando/models/web_research.dart';
 import 'package:lando/services/data_backup.dart';
 import 'package:lando/services/property_repository.dart';
@@ -50,7 +51,13 @@ void main() {
     created: DateTime.utc(2026),
     modified: DateTime.utc(2026),
     layers: [
-      PropertyLayer(id: 'area', kind: LayerKind.area, name: 'Garden'),
+      PropertyLayer(
+        id: 'area',
+        kind: LayerKind.area,
+        name: 'Garden',
+        imperialTagUnit: TagUnit.squareYards,
+        metricTagUnit: TagUnit.squareMeters,
+      ),
       PropertyLayer(id: 'path', kind: LayerKind.distance, name: 'Fence'),
     ],
   );

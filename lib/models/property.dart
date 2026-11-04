@@ -1,6 +1,8 @@
 import 'package:geobase/geobase.dart';
 import 'package:uuid/uuid.dart';
 
+import 'tag_unit.dart';
+
 const _uuid = Uuid();
 String newId() => _uuid.v4();
 
@@ -49,6 +51,9 @@ enum LayerKind { area, distance }
 class PropertyLayer {
   final String id;
   final LayerKind kind;
+  bool visible;
+  TagUnit? imperialTagUnit;
+  TagUnit? metricTagUnit;
   String name;
   List<BoundaryPoint> points;
   int nextLabel;
@@ -56,12 +61,42 @@ class PropertyLayer {
     required this.id,
     required this.kind,
     required this.name,
+    this.visible = true,
+    this.imperialTagUnit,
+    this.metricTagUnit,
     List<BoundaryPoint>? points,
     this.nextLabel = 0,
   }) : points = points ?? [];
+  TagUnit tagUnit({required bool metric}) {
+    final options = TagUnit.options(
+      area: kind == LayerKind.area,
+      metric: metric,
+    );
+    final selected = metric ? metricTagUnit : imperialTagUnit;
+    return options.contains(selected) ? selected! : options.first;
+  }
+
+  void cycleTagUnit({required bool metric}) {
+    final options = TagUnit.options(
+      area: kind == LayerKind.area,
+      metric: metric,
+    );
+    final next =
+        options[(options.indexOf(tagUnit(metric: metric)) + 1) %
+            options.length];
+    if (metric) {
+      metricTagUnit = next;
+    } else {
+      imperialTagUnit = next;
+    }
+  }
+
   Map<String, dynamic> toJson() => {
     'id': id,
     'kind': kind.name,
+    'visible': visible,
+    if (imperialTagUnit != null) 'imperialTagUnit': imperialTagUnit!.name,
+    if (metricTagUnit != null) 'metricTagUnit': metricTagUnit!.name,
     'name': name,
     'points': points.map((p) => p.toJson()).toList(),
     'nextLabel': nextLabel,
@@ -69,6 +104,9 @@ class PropertyLayer {
   factory PropertyLayer.fromJson(Map<String, dynamic> j) => PropertyLayer(
     id: j['id'] as String,
     kind: LayerKind.values.byName(j['kind'] as String),
+    visible: j['visible'] as bool? ?? true,
+    imperialTagUnit: TagUnit.fromName(j['imperialTagUnit'] as String?),
+    metricTagUnit: TagUnit.fromName(j['metricTagUnit'] as String?),
     name: j['name'] as String,
     points: (j['points'] as List)
         .map((p) => BoundaryPoint.fromJson(Map<String, dynamic>.from(p)))

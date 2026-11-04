@@ -231,12 +231,28 @@ class PropertyController extends ChangeNotifier {
     return layer;
   }
 
+  void cycleLayerTagUnit(String id) {
+    final layer = property!.layers.firstWhere((layer) => layer.id == id);
+    layer.cycleTagUnit(metric: property!.metric);
+    changed();
+  }
+
+  void toggleLayerVisibility(String id) {
+    final layer = property!.layers.firstWhere((layer) => layer.id == id);
+    layer.visible = !layer.visible;
+    if (!layer.visible && activeLayerId == id) activeLayerId = null;
+    changed();
+  }
+
   void selectLayer(String id) {
-    if (!property!.layers.any((layer) => layer.id == id)) {
-      throw StateError('Layer not found');
-    }
+    final layer = property!.layers.firstWhere((layer) => layer.id == id);
     activeLayerId = id;
-    notifyListeners();
+    if (!layer.visible) {
+      layer.visible = true;
+      changed();
+    } else {
+      notifyListeners();
+    }
   }
 
   void finishLayer() {

@@ -76,16 +76,35 @@ class PropertyLayersSheet extends StatelessWidget {
               ),
               title: Text(layer.name),
               subtitle: Text(
-                errors.isEmpty ? measurement(layer) : errors.join('\n'),
+                '${layer.visible ? '' : 'Hidden on map\n'}${errors.isEmpty ? measurement(layer) : errors.join('\n')}',
               ),
               onTap: () => onEdit(layer),
-              trailing: PopupMenuButton<String>(
-                tooltip: 'Manage ${layer.name}',
-                onSelected: (value) =>
-                    value == 'rename' ? onRename(layer) : onDelete(layer),
-                itemBuilder: (_) => [
-                  const PopupMenuItem(value: 'rename', child: Text('Rename')),
-                  const PopupMenuItem(value: 'delete', child: Text('Delete')),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    tooltip:
+                        '${layer.visible ? 'Hide' : 'Show'} ${layer.name} on map',
+                    isSelected: layer.visible,
+                    icon: const Icon(Icons.visibility_off_outlined),
+                    selectedIcon: const Icon(Icons.visibility_outlined),
+                    onPressed: () => controller.toggleLayerVisibility(layer.id),
+                  ),
+                  PopupMenuButton<String>(
+                    tooltip: 'Manage ${layer.name}',
+                    onSelected: (value) =>
+                        value == 'rename' ? onRename(layer) : onDelete(layer),
+                    itemBuilder: (_) => [
+                      const PopupMenuItem(
+                        value: 'rename',
+                        child: Text('Rename'),
+                      ),
+                      const PopupMenuItem(
+                        value: 'delete',
+                        child: Text('Delete'),
+                      ),
+                    ],
+                  ),
                 ],
               ),
             );

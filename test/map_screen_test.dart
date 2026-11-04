@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart' show GoogleMap;
 import 'package:google_maps_flutter_platform_interface/google_maps_flutter_platform_interface.dart';
 import 'package:lando/models/property.dart';
+import 'package:lando/models/tag_unit.dart';
 import 'package:lando/screens/map_screen.dart';
 import 'package:lando/services/property_repository.dart';
 import 'package:sqflite/sqflite.dart';
@@ -365,6 +366,32 @@ void main() {
         ),
         hasLength(3),
       );
+      final garden = repo.properties['layers-test']!.layers.first;
+      final driveway = repo.properties['layers-test']!.layers[1];
+      final gardenTag = map.objects.markers.firstWhere(
+        (m) => m.markerId.value == 'measurement-label-${garden.id}',
+      );
+      final drivewayTag = map.objects.markers.firstWhere(
+        (m) => m.markerId.value == 'measurement-label-${driveway.id}',
+      );
+      gardenTag.onTap!();
+      drivewayTag.onTap!();
+      await tester.runAsync(
+        () async => Future<void>.delayed(const Duration(milliseconds: 100)),
+      );
+      await tester.pumpAndSettle();
+      expect(garden.tagUnit(metric: false), TagUnit.squareFeet);
+      expect(driveway.tagUnit(metric: false), TagUnit.yards);
+      expect(
+        repo.properties['layers-test']!.layers.last.tagUnit(metric: false),
+        TagUnit.feet,
+      );
+      expect(find.text('Garden'), findsNothing);
+      await tester.tap(find.byTooltip('Save property'));
+      await tester.pumpAndSettle();
+      final saved = Property.fromJson(repo.properties['layers-test']!.toJson());
+      expect(saved.layers.first.tagUnit(metric: false), TagUnit.squareFeet);
+      expect(saved.layers[1].tagUnit(metric: false), TagUnit.yards);
       await tester.tap(find.byTooltip('Hide area & distance labels'));
       await tester.pumpAndSettle();
       expect(
@@ -387,6 +414,33 @@ void main() {
       await animateModal();
       expect(find.text('Garden'), findsOneWidget);
       expect(find.text('Driveway'), findsOneWidget);
+      await tester.tap(find.byTooltip('Hide Garden on map'));
+      await animateModal();
+      expect(find.byTooltip('Show Garden on map'), findsOneWidget);
+      expect(find.text('Areas & measurements'), findsOneWidget);
+      expect(map.objects.polygons, hasLength(1));
+      expect(map.objects.polylines, hasLength(2));
+      expect(
+        map.objects.markers.where(
+          (m) => m.markerId.value.startsWith('measurement-label-'),
+        ),
+        hasLength(2),
+      );
+      await tester.ensureVisible(find.byTooltip('Hide Driveway on map'));
+      await animateModal();
+      await tester.tap(find.byTooltip('Hide Driveway on map'));
+      await animateModal();
+      expect(map.objects.polylines, hasLength(1));
+      expect(find.byTooltip('Show Garden on map'), findsOneWidget);
+      expect(find.byTooltip('Show Driveway on map'), findsOneWidget);
+      await tester.tap(find.byTooltip('Show Driveway on map'));
+      await animateModal();
+      await tester.ensureVisible(find.byTooltip('Show Garden on map'));
+      await animateModal();
+      await tester.tap(find.byTooltip('Show Garden on map'));
+      await animateModal();
+      expect(map.objects.polygons, hasLength(2));
+      expect(map.objects.polylines, hasLength(2));
       await tester.drag(find.text('Garden'), const Offset(0, -180));
       await animateModal();
       expect(find.text('Fence'), findsOneWidget);

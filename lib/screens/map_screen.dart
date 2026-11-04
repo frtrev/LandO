@@ -108,7 +108,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
   void refresh() {
     measurementLabels = [
       for (final layer in state.property?.layers ?? <PropertyLayer>[])
-        if ((state.layerErrors[layer.id] ?? []).isEmpty)
+        if (layer.visible && (state.layerErrors[layer.id] ?? []).isEmpty)
           ?MapMeasurementLabel.forLayer(
             layer,
             metric: state.property!.metric,
@@ -1313,6 +1313,9 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                               : const Offset(.5, 1.1),
                           zIndexInt: 1,
                           consumeTapEvents: true,
+                          onTap: busy
+                              ? null
+                              : () => state.cycleLayerTagUnit(label.id),
                         ),
                   if (!measuring)
                     for (final point in points)
@@ -1343,7 +1346,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                         onDragEnd: (position) =>
                             moveBoundaryPoint(point.id, position),
                       ),
-                  if (state.activeLayer != null)
+                  if (state.activeLayer?.visible == true)
                     for (final point in state.activeLayer!.points)
                       Marker(
                         markerId: MarkerId('layer-${point.id}'),
@@ -1387,7 +1390,8 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                               .withValues(alpha: .18),
                     ),
                   for (final layer in p?.layers ?? <PropertyLayer>[])
-                    if (layer.kind == LayerKind.area &&
+                    if (layer.visible &&
+                        layer.kind == LayerKind.area &&
                         layer.points.length >= 3)
                       Polygon(
                         polygonId: PolygonId(layer.id),
@@ -1405,7 +1409,8 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                 },
                 polylines: {
                   for (final layer in p?.layers ?? <PropertyLayer>[])
-                    if (layer.points.length >= 2 &&
+                    if (layer.visible &&
+                        layer.points.length >= 2 &&
                         (layer.kind == LayerKind.distance ||
                             layer.points.length < 3))
                       Polyline(
