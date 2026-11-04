@@ -8,7 +8,7 @@
 - Android application ID `com.neotheone.lando`, minimum Android API 24.
 - iOS bundle ID `app.neotheone.lando`, deployment target iOS 15+.
 - Google Cloud billing and platform Maps keys. Maps and search require connectivity. Saved geometry and calculations live on the device.
-- Address search requires deploying the included server proxy and passing its HTTPS URL to Flutter.
+- Address and place search uses native Google Places SDKs on iOS/Android with the existing platform keys. No proxy is required by default.
 
 This implementation requires real-device acceptance testing with configured Google Maps keys before Phase 1 can be declared complete. Saved areas and distance paths extend the mapping milestone; Ask LandO adds read-only property questions and deterministic planning estimates; drawing automation, supplier prices and project-management screens are not included. The original brief references Sheet Music Rookie; its source/design was not supplied, so this project uses a standalone Material 3 architecture.
 
@@ -16,18 +16,26 @@ This implementation requires real-device acceptance testing with configured Goog
 
 Enable **Maps SDK for Android**, **Maps SDK for iOS**, and **Places API (New)** in your Google Cloud project.
 
-1. Copy `android/maps.properties.example` to `android/maps.properties`. Set `MAPS_API_KEY` to the Android key. Restrict it to Android applications: package `com.neotheone.lando` and the signing certificate SHA-1 for each intended debug/release build. Restrict API access to Maps SDK for Android.
-2. Copy `ios/Flutter/MapsSecrets.xcconfig.example` to `ios/Flutter/MapsSecrets.xcconfig`. Set `GOOGLE_MAPS_API_KEY`. Restrict this separate key to iOS bundle `app.neotheone.lando` and Maps SDK for iOS. Both Debug and Release configurations include the local file; Profile uses Release.
-3. Create a **separate server key**, restricted to Places API (New) and your server's static egress IP where available. Keep it on the server. Mobile application restrictions are unsuitable for an ordinary server REST key.
+1. Copy `android/maps.properties.example` to `android/maps.properties`. Set `MAPS_API_KEY` to the Android key. Restrict it to Android applications: package `com.neotheone.lando` and the signing certificate SHA-1 for each intended debug/release build. Allow Maps SDK for Android and Places API (New) in its API restrictions.
+2. Copy `ios/Flutter/MapsSecrets.xcconfig.example` to `ios/Flutter/MapsSecrets.xcconfig`. Set `GOOGLE_MAPS_API_KEY`. Restrict this separate key to iOS bundle `app.neotheone.lando` and allow Maps SDK for iOS plus Places API (New) in its API restrictions. Both Debug and Release configurations include the local file; Profile uses Release.
+3. **Optional proxy deployments only:** create a **separate server key**, restricted to Places API (New) and your server's static egress IP where available. Keep it on the server. Mobile application restrictions are unsuitable for an ordinary server REST key.
 4. Configure signing in Xcode for your own team and provision Android release signing before distribution. The generated Android release build currently uses debug signing for development.
 
 A build without a configured Maps SDK key displays setup guidance. The real credential files are git-ignored. Never commit keys, signing files, or environment files. Keys embedded in mobile Maps SDK builds are identifiable by clients; platform and API restrictions are essential.
 
 Official setup: [Flutter Google Maps](https://developers.google.com/maps/flutter-package/config), [Android key restrictions](https://developers.google.com/maps/documentation/android-sdk/get-api-key), [iOS setup](https://developers.google.com/maps/documentation/ios-sdk/config), [Places Text Search](https://developers.google.com/maps/documentation/places/web-service/text-search).
 
-### Address search proxy
+### Native address and place search
 
-The dependency-free Node 22+ server in `server/places_proxy.mjs` forwards Text Search (New) with a minimal field mask (`places.displayName,places.formattedAddress,places.location`). The app displays results over Google Maps and moves the camera to the selected address. No Google REST key is distributed in the app.
+The Search button uses native Google Places Text Search (New), with a 50 km bias around the current map center, returning up to five address/place results. Selecting a result centers the map there. Native SDKs reuse the iOS/Android keys from the Maps configuration, retaining bundle/package and signing restrictions. Enable **Places API (New)** and billing in the same Cloud project and allow Places access in the keys' API restrictions. No Gemini/OpenAI credential is involved. Google Maps display and Google Places search are separate services; enabling map tiles alone does not enable search. Rebuild/reinstall after this native SDK update.
+
+If a lookup is rejected, the app shows connection/Cloud setup guidance instead of exposing SDK error descriptions or credentials. iOS uses GooglePlaces 9.4.1 to retain iOS 15 compatibility; Android uses Places 5.0.0 with minimum API 24. SDK searches are independent of location permission; without GPS the visible map center is used for bias.
+
+Native implementation references: [iOS Text Search](https://developers.google.com/maps/documentation/places/ios-sdk/text-search), [Android Text Search](https://developers.google.com/maps/documentation/places/android-sdk/text-search).
+
+### Optional address search proxy
+
+If you explicitly set `PLACES_PROXY_URL`, the app uses that HTTPS proxy instead of the native SDK. The optional dependency-free Node 22+ server in `server/places_proxy.mjs` forwards Text Search (New) with a minimal field mask (`places.displayName,places.formattedAddress,places.location`). The app displays results over Google Maps and moves the camera to the selected address. No Google REST key is distributed in the app.
 
 Set `GOOGLE_PLACES_API_KEY` through your deployment's secret manager/environment, then run:
 
@@ -46,7 +54,7 @@ The server includes input limits, a timeout and per-connection-IP request limiti
 
 ## Using LandO
 
-1. Search or pan to your land. Use the location button to request foreground location permission and return to your position. Permission denial does not block map editing.
+1. With no saved property or recovered draft, LandO requests foreground location permission and centers on your current location. Saved properties and drafts retain their own map view. Disabled/denied/timed-out location leaves the map usable for search or panning. A delayed startup fix does not override a property you opened or a map you already moved/searched. Use My location to try again at any time.
 2. Choose **Create Property**, enter its name, and adjust the four initial corners. The initial rectangle is a viewport-relative starter shape, not an inferred parcel boundary.
 3. Drag lettered corners in **Boundary** mode. Tap a corner to enter decimal latitude/longitude (eight digits shown in editor, six in details) or delete it. At least three corners remain.
 4. **Add point** asks which edge to split. A geodesic midpoint is inserted in that exact position, with a new permanent label: A → B → E → C → D → A. Move it to the intended corner. Labels extend through Z, AA, AB, etc. No automatic geographic sorting occurs.
@@ -154,3 +162,7 @@ Live verification on 2026-11-03 passed on an iPhone 17 Pro simulator against the
 ### Concise chat and answer details
 
 New answers lead with 1–3 conversational sentences and put supporting prose after a `Details:` separator. The interface displays the short lead, keeping the original text and citation positions unchanged in saved history and follow-up context. Previously saved verbose answers show a short original excerpt; **View details** still exposes their entire text. Details and disclaimer views make no new API requests and do not change the selected conversation or unsent draft. User messages remain fully visible.
+
+### Native map-services verification
+
+`integration_test/map_services_test.dart` performs a real, billable Places lookup and verifies empty-startup GPS on an iPhone simulator. Set its simulated location to `32.7767,-96.7970`, grant foreground location to `app.neotheone.lando`, then run `flutter test integration_test/map_services_test.dart -d SIMULATOR_ID`. It uses a synthetic in-memory property store. Live verification on 2026-11-03 passed: the empty map centered on the simulated Dallas position, and native Google Places returned the Texas State Capitol address with the existing iOS build key and no proxy. Android's native bridge was verified by compiling the debug APK; its key/Cloud permissions still require device acceptance.

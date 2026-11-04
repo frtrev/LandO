@@ -29,6 +29,8 @@ flutter_ios_podfile_setup
 
 target 'Runner' do
   use_frameworks!
+  # Keep iOS 15 support alongside the current Google Maps SDK.
+  pod 'GooglePlaces', '9.4.1'
 
   flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
   target 'RunnerTests' do

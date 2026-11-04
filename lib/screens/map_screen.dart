@@ -46,6 +46,8 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
       details = false,
       busy = false,
       allowPop = false;
+  bool _locating = false;
+  int _navigationVersion = 0;
   bool get measuring => state.activeLayer != null;
   String length(double meters) => state.property?.metric == true
       ? '${meters.toStringAsFixed(1)} m'
@@ -72,6 +74,12 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
         );
       }
       centerProperty();
+      // Recovered drafts and saved properties always keep their saved view.
+      if (mounted &&
+          state.property == null &&
+          (await widget.repository.list()).isEmpty) {
+        await locate(automatic: true);
+      }
     } catch (e) {
       message('Could not restore app data: $e');
     }
@@ -266,6 +274,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
     if (p == null) {
       return;
     }
+    _navigationVersion++;
     camera = CameraPosition(
       target: LatLng(p.latitude, p.longitude),
       zoom: p.zoom,
@@ -368,50 +377,84 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
     message('Starter rectangle only. Drag each corner to map your boundary.');
   }
 
-  Future<void> locate() async {
-    if (!await Geolocator.isLocationServiceEnabled()) {
-      message('Enable Location Services in device settings.');
-      return;
-    }
-    var permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
-    }
-    final granted =
-        permission == LocationPermission.always ||
-        permission == LocationPermission.whileInUse;
-    if (!mounted) {
-      return;
-    }
-    setState(() => locationGranted = granted);
-    if (!granted) {
-      message(
-        permission == LocationPermission.deniedForever
-            ? 'Location denied. Enable it in app settings.'
-            : 'Location permission denied. You can still search or pan.',
+  Future<void> locate({bool automatic = false}) async {
+    if (_locating || !mounted) return;
+    final version = automatic ? _navigationVersion : ++_navigationVersion;
+    final initialView = camera;
+    setState(() => _locating = true);
+    try {
+      if (!await Geolocator.isLocationServiceEnabled()) {
+        message(
+          'Enable Location Services to center the map. You can still search or pan.',
+        );
+        return;
+      }
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      final granted =
+          permission == LocationPermission.always ||
+          permission == LocationPermission.whileInUse;
+      if (!mounted) return;
+      setState(() => locationGranted = granted);
+      if (!granted) {
+        message(
+          permission == LocationPermission.deniedForever
+              ? 'Location denied. Enable it in app settings, or search and pan.'
+              : 'Location permission denied. You can still search or pan.',
+        );
+        return;
+      }
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: LocationSettings(
+          accuracy: automatic ? LocationAccuracy.medium : LocationAccuracy.high,
+          timeLimit: const Duration(seconds: 20),
+        ),
       );
-      return;
+      if (!mounted) return;
+      if (automatic) {
+        final saved = await widget.repository.list();
+        if (!mounted ||
+            version != _navigationVersion ||
+            state.property != null ||
+            saved.isNotEmpty ||
+            (camera.target.latitude - initialView.target.latitude).abs() >
+                .000001 ||
+            (camera.target.longitude - initialView.target.longitude).abs() >
+                .000001 ||
+            (camera.zoom - initialView.zoom).abs() > .001 ||
+            (camera.bearing - initialView.bearing).abs() > .001 ||
+            (camera.tilt - initialView.tilt).abs() > .001) {
+          return;
+        }
+      }
+      if (!mounted) return;
+      camera = CameraPosition(
+        target: LatLng(position.latitude, position.longitude),
+        zoom: 18,
+      );
+      await map?.animateCamera(CameraUpdate.newCameraPosition(camera));
+    } on Object {
+      message(
+        'Could not determine your location. You can still search or pan, or try My location again.',
+      );
+    } finally {
+      if (mounted) setState(() => _locating = false);
     }
-    final position = await Geolocator.getCurrentPosition(
-      locationSettings: const LocationSettings(
-        accuracy: LocationAccuracy.high,
-        timeLimit: Duration(seconds: 20),
-      ),
-    );
-    await map?.animateCamera(
-      CameraUpdate.newLatLngZoom(
-        LatLng(position.latitude, position.longitude),
-        18,
-      ),
-    );
   }
 
   Future<void> findAddress() async {
+    _navigationVersion++;
     final query = await textDialog('Search address or place', '');
     if (query == null) {
       return;
     }
-    final results = await search.search(query);
+    final results = await search.search(
+      query,
+      latitude: camera.target.latitude,
+      longitude: camera.target.longitude,
+    );
     if (!mounted) {
       return;
     }
@@ -438,10 +481,12 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
         ),
       ),
     );
-    if (place != null) {
-      await map?.animateCamera(
-        CameraUpdate.newLatLngZoom(LatLng(place.latitude, place.longitude), 18),
+    if (place != null && mounted) {
+      camera = CameraPosition(
+        target: LatLng(place.latitude, place.longitude),
+        zoom: 18,
       );
+      await map?.animateCamera(CameraUpdate.newCameraPosition(camera));
     }
   }
 
@@ -1040,7 +1085,13 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                 mapType: mapType,
                 onMapCreated: (controller) {
                   map = controller;
-                  centerProperty();
+                  if (state.property != null) {
+                    centerProperty();
+                  } else {
+                    controller.moveCamera(
+                      CameraUpdate.newCameraPosition(camera),
+                    );
+                  }
                 },
                 onCameraMove: (position) => camera = position,
                 onCameraIdle: () {
@@ -1185,7 +1236,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                     FloatingActionButton.small(
                       heroTag: 'locate',
                       tooltip: 'My location',
-                      onPressed: busy ? null : () => safe(locate),
+                      onPressed: busy || _locating ? null : () => safe(locate),
                       child: const Icon(Icons.my_location),
                     ),
                     if (p != null)

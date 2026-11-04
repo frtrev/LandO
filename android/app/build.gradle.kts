@@ -55,3 +55,8 @@ kotlin {
 flutter {
     source = "../.."
 }
+
+// Native Places SDK uses the same Android-restricted key as the map.
+dependencies {
+    implementation("com.google.android.libraries.places:places:5.0.0")
+}

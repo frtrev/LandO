@@ -1,4 +1,6 @@
 import 'dart:convert';
+import 'dart:async';
+import 'package:flutter/services.dart';
 
 import 'package:http/http.dart' as http;
 
@@ -9,16 +11,68 @@ class PlaceResult {
   const PlaceResult(this.name, this.latitude, this.longitude);
 }
 
-/// Calls an operator-controlled HTTPS proxy; the Google web-service key stays
-/// server-side. The proxy forwards Places API (New) Text Search responses.
+/// Uses native Google Places SDKs by default. An explicitly configured HTTPS
+/// proxy remains available for deployments that prefer server-side search.
 class PlaceSearch {
   final String endpoint;
   final http.Client client;
+  final MethodChannel channel;
   PlaceSearch({
     this.endpoint = const String.fromEnvironment('PLACES_PROXY_URL'),
     http.Client? client,
+    this.channel = const MethodChannel('lando/places'),
   }) : client = client ?? http.Client();
-  Future<List<PlaceResult>> search(String query) async {
+  Future<List<PlaceResult>> search(
+    String query, {
+    double? latitude,
+    double? longitude,
+  }) async {
+    query = query.trim();
+    if (query.isEmpty || query.length > 300) {
+      throw const PlaceSearchException(
+        'Enter an address or place (up to 300 characters).',
+      );
+    }
+    if (endpoint.trim().isEmpty) {
+      try {
+        final results = await channel
+            .invokeListMethod<dynamic>('search', {
+              'query': query,
+              if (latitude != null && longitude != null) 'latitude': latitude,
+              if (latitude != null && longitude != null) 'longitude': longitude,
+            })
+            .timeout(const Duration(seconds: 20));
+        return (results ?? []).map((item) {
+          final place = Map<String, dynamic>.from(item as Map);
+          return PlaceResult(
+            place['name'] as String,
+            (place['latitude'] as num).toDouble(),
+            (place['longitude'] as num).toDouble(),
+          );
+        }).toList();
+      } on MissingPluginException {
+        throw const PlaceSearchException(
+          'Address search is available in the iOS and Android app. Rebuild and reinstall the app after updating.',
+        );
+      } on PlatformException catch (error) {
+        if (error.code == 'places_not_configured') {
+          throw const PlaceSearchException(
+            'Configure a Google Maps/Places key for this app build to enable address search.',
+          );
+        }
+        final details = error.details;
+        throw PlaceSearchException(
+          'Google Places search could not complete. Check your connection. If it persists, enable Places API (New), billing, and Places access for this app’s key in Google Cloud.',
+          statusCode: details is Map && details['statusCode'] is int
+              ? details['statusCode'] as int
+              : null,
+        );
+      } on TimeoutException {
+        throw const PlaceSearchException(
+          'Address search timed out. Check your connection and try again.',
+        );
+      }
+    }
     final uri = Uri.tryParse(endpoint);
     if (uri == null || uri.scheme != 'https' || uri.host.isEmpty) {
       throw const FormatException(
@@ -50,4 +104,12 @@ class PlaceSearch {
   }
 
   void dispose() => client.close();
+}
+
+class PlaceSearchException implements Exception {
+  final String message;
+  final int? statusCode;
+  const PlaceSearchException(this.message, {this.statusCode});
+  @override
+  String toString() => message;
 }
