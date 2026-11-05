@@ -69,6 +69,127 @@ void main() {
   });
 
   testWidgets(
+    'unselected saved properties and a deleted last selection still start at GPS',
+    (tester) async {
+      var fixes = 0;
+      messenger.setMockMethodCallHandler(channel, (call) async {
+        if (call.method == 'checkPermission') return 2;
+        if (call.method == 'isLocationServiceEnabled') return true;
+        if (call.method == 'getCurrentPosition') {
+          fixes++;
+          return position();
+        }
+        return null;
+      });
+      for (final selected in ['', 'deleted-property']) {
+        final repo = MemoryRepository();
+        await repo.save(exampleProperty());
+        repo.preferences['lastProperty'] = selected;
+        await mount(tester, repo);
+        expect(
+          tester
+              .widget<GoogleMap>(find.byType(GoogleMap))
+              .initialCameraPosition
+              .target,
+          const LatLng(32.7767, -96.7970),
+        );
+        expect(find.text('Your land, in perspective.'), findsOneWidget);
+        expect(repo.properties, hasLength(1));
+        await tester.pumpWidget(const SizedBox());
+      }
+      expect(fixes, 2);
+    },
+  );
+
+  testWidgets(
+    'Explore hides the welcome card and can leave a selected property safely',
+    (tester) async {
+      messenger.setMockMethodCallHandler(channel, (call) async {
+        if (call.method == 'checkPermission') return 2;
+        if (call.method == 'isLocationServiceEnabled') return true;
+        if (call.method == 'getCurrentPosition') return position();
+        return null;
+      });
+      final repo = MemoryRepository();
+      await repo.save(exampleProperty());
+      repo.preferences['lastProperty'] = '';
+      await mount(tester, repo);
+      await tester.tap(find.text('Explore'));
+      await tester.pumpAndSettle();
+      expect(find.text('Your land, in perspective.'), findsNothing);
+      expect(find.text('Explore the map'), findsOneWidget);
+      expect(
+        tester.widget<GoogleMap>(find.byType(GoogleMap)).polygons,
+        isEmpty,
+      );
+      expect(
+        tester.widget<GoogleMap>(find.byType(GoogleMap)).scrollGesturesEnabled,
+        true,
+      );
+      await tester.tap(find.text('Properties'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.text('Explore'), findsOneWidget);
+      await tester.tap(find.text('My pasture'));
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<GoogleMap>(find.byType(GoogleMap)).polygons,
+        isNotEmpty,
+      );
+      final marker = tester
+          .widget<GoogleMap>(find.byType(GoogleMap))
+          .markers
+          .firstWhere((m) => m.draggable);
+      marker.onDragEnd!(const LatLng(30.00005, -98));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Properties'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.tap(find.text('Explore'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.text('Unsaved property changes'), findsOneWidget);
+      await tester.tap(find.text('Keep editing'));
+      await tester.pumpAndSettle();
+      expect(repo.preferences['lastProperty'], 'property');
+      expect(
+        tester.widget<GoogleMap>(find.byType(GoogleMap)).polygons,
+        isNotEmpty,
+      );
+      await tester.tap(find.text('Properties'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.tap(find.text('Explore'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.tap(find.text('Discard'));
+      await tester.pumpAndSettle();
+      expect(repo.preferences['lastProperty'], '');
+      expect(repo.properties, hasLength(1));
+      expect(find.text('Your land, in perspective.'), findsNothing);
+      expect(find.text('Explore the map'), findsOneWidget);
+      expect(
+        tester.widget<GoogleMap>(find.byType(GoogleMap)).polygons,
+        isEmpty,
+      );
+      await tester.pumpWidget(const SizedBox());
+      await mount(tester, repo);
+      expect(
+        tester
+            .widget<GoogleMap>(find.byType(GoogleMap))
+            .initialCameraPosition
+            .target,
+        const LatLng(32.7767, -96.7970),
+      );
+      expect(
+        tester.widget<GoogleMap>(find.byType(GoogleMap)).polygons,
+        isEmpty,
+      );
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets(
     'saved property and recovered draft keep their own view without requesting GPS',
     (tester) async {
       var fixes = 0, requests = 0;

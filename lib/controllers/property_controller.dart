@@ -231,6 +231,18 @@ class PropertyController extends ChangeNotifier {
     return layer;
   }
 
+  bool replaceAreaPoints(String id, List<BoundaryPoint> points) {
+    final layer = property!.layers.firstWhere((layer) => layer.id == id);
+    if (layer.kind != LayerKind.area ||
+        !layer.visible ||
+        !geometry.calculate(points).valid) {
+      return false;
+    }
+    layer.points = List.of(points);
+    changed();
+    return true;
+  }
+
   void cycleLayerTagUnit(String id) {
     final layer = property!.layers.firstWhere((layer) => layer.id == id);
     layer.cycleTagUnit(metric: property!.metric);

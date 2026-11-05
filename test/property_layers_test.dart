@@ -5,6 +5,7 @@ import 'package:lando/controllers/property_controller.dart';
 import 'package:lando/models/property.dart';
 import 'package:lando/models/tag_unit.dart';
 import 'package:lando/services/property_repository.dart';
+import 'package:lando/services/area_transform.dart';
 
 List<BoundaryPoint> boundary() => [
   const BoundaryPoint(id: 'a', label: 'A', latitude: 30, longitude: -98),
@@ -121,6 +122,77 @@ void main() {
       expect(restored.tagUnit(metric: false), TagUnit.yards);
       expect(restored.tagUnit(metric: true), TagUnit.centimeters);
       expect(controller.dirty, false);
+    },
+  );
+
+  test(
+    'custom area transformations preserve metadata and boundary through drafts and SQLite',
+    () async {
+      final originalBoundary = controller.property!.points
+          .map((p) => p.toJson())
+          .toList();
+      final layer = controller.startLayer(LayerKind.area, 'Garden');
+      draw([
+        [30.0001, -97.9999],
+        [30.0001, -97.9997],
+        [30.0003, -97.9997],
+        [30.0003, -97.9999],
+      ]);
+      controller.cycleLayerTagUnit(layer.id);
+      final snapshot = AreaTransform(layer.points, controller.geometry);
+      expect(
+        controller.replaceAreaPoints(
+          layer.id,
+          snapshot.apply(scale: 1.5, degrees: 30),
+        ),
+        true,
+      );
+      final transformed = layer.points.map((p) => p.toJson()).toList();
+      expect(layer.name, 'Garden');
+      expect(layer.imperialTagUnit, TagUnit.squareFeet);
+      expect(layer.points.map((p) => p.id), snapshot.points.map((p) => p.id));
+      final invalid = layer.points
+          .map((p) => p.move(999, p.longitude))
+          .toList();
+      expect(controller.replaceAreaPoints(layer.id, invalid), false);
+      expect(layer.points.map((p) => p.toJson()).toList(), transformed);
+      await controller.persistDraft();
+      controller.dispose();
+      controller = PropertyController(repo);
+      await controller.restore();
+      expect(
+        controller.property!.layers.single.points
+            .map((p) => p.toJson())
+            .toList(),
+        transformed,
+      );
+      expect(
+        controller.property!.points.map((p) => p.toJson()).toList(),
+        originalBoundary,
+      );
+      await controller.save();
+      controller.dispose();
+      await repo.db.close();
+      repo = await PropertyRepository.open(
+        databasePath: path,
+        factory: databaseFactoryFfi,
+      );
+      controller = PropertyController(repo);
+      await controller.restore();
+      expect(
+        controller.property!.layers.single.points
+            .map((p) => p.toJson())
+            .toList(),
+        transformed,
+      );
+      expect(
+        controller.property!.layers.single.imperialTagUnit,
+        TagUnit.squareFeet,
+      );
+      expect(
+        controller.property!.points.map((p) => p.toJson()).toList(),
+        originalBoundary,
+      );
     },
   );
 

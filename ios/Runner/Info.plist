@@ -5,7 +5,7 @@
     <key>GoogleMapsAPIKey</key>
     <string>$(GOOGLE_MAPS_API_KEY)</string>
     <key>NSLocationWhenInUseUsageDescription</key>
-    <string>LandO uses your location to center the map when you have no saved properties or when you tap My location.</string>
+    <string>LandO uses your location to center the map when no property is selected or when you tap My location.</string>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>CFBundleDevelopmentRegion</key>

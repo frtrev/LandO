@@ -2,6 +2,8 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
+import 'package:geobase/geobase.dart' show Geographic;
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
@@ -10,6 +12,8 @@ import '../models/property.dart';
 import '../services/place_search.dart';
 import '../services/map_measurement_label.dart';
 import '../services/property_repository.dart';
+import '../services/area_transform.dart';
+import '../widgets/area_drag_surface.dart';
 import '../widgets/layer_editor_panel.dart';
 import '../widgets/data_transfer_sheet.dart';
 import '../widgets/assistant/property_chat_sheet.dart';
@@ -48,6 +52,18 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
       details = false,
       busy = false,
       allowPop = false;
+  final areaDragKey = GlobalKey<AreaDragSurfaceState>();
+  String? selectedAreaId;
+  String? areaTransformMode;
+  double areaTransformValue = 1;
+  AreaTransform? areaTransform, dragTransform;
+  bool transformRejected = false;
+  PropertyLayer? get selectedArea => state.property?.layers
+      .where(
+        (l) => l.id == selectedAreaId && l.kind == LayerKind.area && l.visible,
+      )
+      .firstOrNull;
+  bool exploring = false;
   bool boundaryVisible = true;
   bool showMapLabels = true;
   List<MapMeasurementLabel> measurementLabels = [];
@@ -82,10 +98,8 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
         );
       }
       centerProperty();
-      // Recovered drafts and saved properties always keep their saved view.
-      if (mounted &&
-          state.property == null &&
-          (await widget.repository.list()).isEmpty) {
+      // Recovered drafts and selected properties keep their saved view.
+      if (mounted && state.property == null) {
         await locate(automatic: true);
       }
     } catch (e) {
@@ -106,6 +120,12 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
   }
 
   void refresh() {
+    if (state.property != null) exploring = false;
+    if (selectedArea == null) {
+      selectedAreaId = null;
+      areaTransformMode = null;
+      areaTransform = null;
+    }
     measurementLabels = [
       for (final layer in state.property?.layers ?? <PropertyLayer>[])
         if (layer.visible && (state.layerErrors[layer.id] ?? []).isEmpty)
@@ -132,6 +152,178 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
     if (mounted) {
       setState(() {});
     }
+  }
+
+  void selectArea(String id) {
+    final layer = state.property!.layers.firstWhere((l) => l.id == id);
+    if (layer.kind != LayerKind.area ||
+        !layer.visible ||
+        state.areaResults[id]?.valid != true) {
+      state.selectLayer(id);
+      return;
+    }
+    state.finishLayer();
+    setState(() {
+      selectedAreaId = id;
+      areaTransformMode = null;
+      areaTransform = null;
+    });
+  }
+
+  void clearAreaSelection() {
+    setState(() {
+      selectedAreaId = null;
+      areaTransformMode = null;
+      areaTransform = null;
+    });
+  }
+
+  void beginAreaTransform(String mode) {
+    final area = selectedArea;
+    if (area == null || areaTransformMode == mode) return;
+    areaTransform = AreaTransform(area.points, state.geometry);
+    transformRejected = false;
+    setState(() {
+      areaTransformMode = mode;
+      areaTransformValue = mode == 'resize' ? 1 : 0;
+    });
+  }
+
+  void updateAreaTransform(double value) {
+    final area = selectedArea, snapshot = areaTransform;
+    if (area == null || snapshot == null) return;
+    final points = snapshot.apply(
+      scale: areaTransformMode == 'resize' ? value : 1,
+      degrees: areaTransformMode == 'rotate' ? value : 0,
+    );
+    if (state.replaceAreaPoints(area.id, points)) {
+      setState(() => areaTransformValue = value);
+    } else if (!transformRejected) {
+      transformRejected = true;
+      message('That change exceeds the supported area or coordinate range.');
+    }
+  }
+
+  void cancelAreaTransform() {
+    if (selectedArea != null && areaTransform != null) {
+      state.replaceAreaPoints(selectedArea!.id, areaTransform!.points);
+    }
+    setState(() {
+      areaTransformMode = null;
+      areaTransform = null;
+    });
+  }
+
+  double get projectionScale => defaultTargetPlatform == TargetPlatform.android
+      ? MediaQuery.devicePixelRatioOf(context)
+      : 1;
+  Future<Offset> projectAreaPoint(LatLng point) async {
+    final coordinate = await map!.getScreenCoordinate(point);
+    return Offset(
+      coordinate.x / projectionScale,
+      coordinate.y / projectionScale,
+    );
+  }
+
+  Future<LatLng> unprojectAreaPoint(Offset point) => map!.getLatLng(
+    ScreenCoordinate(
+      x: (point.dx * projectionScale).round(),
+      y: (point.dy * projectionScale).round(),
+    ),
+  );
+
+  void startAreaDrag(String id) {
+    selectArea(id);
+    dragTransform = AreaTransform(selectedArea!.points, state.geometry);
+    transformRejected = false;
+  }
+
+  void moveArea(String id, LatLng from, LatLng to) {
+    if (dragTransform == null || selectedAreaId != id) return;
+    final points = dragTransform!.drag(
+      Geographic(lat: from.latitude, lon: from.longitude),
+      Geographic(lat: to.latitude, lon: to.longitude),
+    );
+    if (!state.replaceAreaPoints(id, points) && !transformRejected) {
+      transformRejected = true;
+      message('That move exceeds the supported area or coordinate range.');
+    }
+  }
+
+  Widget areaSelectionPanel() {
+    final area = selectedArea!;
+    final resizing = areaTransformMode == 'resize';
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    area.name,
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                ),
+                IconButton(
+                  tooltip: 'Deselect area',
+                  onPressed: clearAreaSelection,
+                  icon: const Icon(Icons.close),
+                ),
+              ],
+            ),
+            Text(layerMeasurement(area)),
+            const SizedBox(height: 6),
+            const Text(
+              'Hold inside this area and drag to move it. Tap outside to return to the property menu.',
+              style: TextStyle(fontSize: 12),
+            ),
+            if (areaTransformMode != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                resizing
+                    ? 'Resize: ${(areaTransformValue * 100).round()}%'
+                    : 'Rotate: ${areaTransformValue.round()}°',
+              ),
+              Slider(
+                label: resizing
+                    ? '${(areaTransformValue * 100).round()}%'
+                    : '${areaTransformValue.round()}°',
+                value: areaTransformValue,
+                min: resizing ? .25 : -180,
+                max: resizing ? 3 : 180,
+                divisions: resizing ? 110 : 360,
+                onChanged: updateAreaTransform,
+              ),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  TextButton(
+                    onPressed: cancelAreaTransform,
+                    child: const Text('Cancel'),
+                  ),
+                  FilledButton(
+                    onPressed: () => setState(() {
+                      areaTransformMode = null;
+                      areaTransform = null;
+                    }),
+                    child: const Text('Apply'),
+                  ),
+                ],
+              ),
+            ],
+            const SizedBox(height: 4),
+            const Text(
+              'Included when you save this property. Planning estimate.',
+              style: TextStyle(fontSize: 11),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> buildMeasurementIcon(MapMeasurementLabel label) async {
@@ -378,6 +570,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
       if (previous != null) {
         await state.open(previous);
       } else {
+        await widget.repository.setPreference('lastProperty', '');
         state.close();
       }
       return true;
@@ -530,11 +723,9 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
       );
       if (!mounted) return;
       if (automatic) {
-        final saved = await widget.repository.list();
         if (!mounted ||
             version != _navigationVersion ||
             state.property != null ||
-            saved.isNotEmpty ||
             (camera.target.latitude - initialView.target.latitude).abs() >
                 .000001 ||
             (camera.target.longitude - initialView.target.longitude).abs() >
@@ -610,6 +801,17 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
     }
   }
 
+  Future<void> explore() async {
+    if (!await canLeave() || !mounted) return;
+    final hadProperty = state.property != null;
+    await state.discardDraft();
+    await widget.repository.setPreference('lastProperty', '');
+    if (!mounted) return;
+    if (hadProperty) _navigationVersion++;
+    exploring = true;
+    state.close();
+  }
+
   Future<void> properties() async {
     final saved = await widget.repository.list();
     if (!mounted) {
@@ -630,6 +832,14 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                   icon: const Icon(Icons.add),
                   label: const Text('Create'),
                 ),
+              ),
+              ListTile(
+                leading: const Icon(Icons.explore_outlined),
+                title: const Text('Explore'),
+                subtitle: const Text(
+                  'Browse the map without selecting a property',
+                ),
+                onTap: () => Navigator.pop(c, 'explore'),
               ),
               Expanded(
                 child: saved.isEmpty
@@ -661,6 +871,10 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
       ),
     );
     if (selected == null) {
+      return;
+    }
+    if (selected == 'explore') {
+      await explore();
       return;
     }
     if (selected == 'new') {
@@ -709,6 +923,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
   }
 
   Future<void> editPoint(BoundaryPoint point, {String? layerId}) async {
+    if (selectedArea != null) clearAreaSelection();
     if (layerId == null && !editing) {
       showCoordinateLockMessage();
       return;
@@ -887,6 +1102,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
   }
 
   Future<void> transferData() async {
+    if (selectedArea != null) clearAreaSelection();
     await recoverDraft();
     if (state.storageError != null || !mounted) return;
     _transferring = true;
@@ -1224,7 +1440,10 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                 ),
               ),
               Text(
-                p?.name ?? 'Map it. Measure it. Plan it.',
+                p?.name ??
+                    (exploring
+                        ? 'Explore the map'
+                        : 'Map it. Measure it. Plan it.'),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: Theme.of(context).textTheme.labelSmall,
@@ -1264,168 +1483,220 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
           builder: (context, constraints) => Stack(
             fit: StackFit.expand,
             children: [
-              GoogleMap(
-                initialCameraPosition: camera,
-                mapType: mapType,
-                onMapCreated: (controller) {
-                  map = controller;
-                  if (state.property != null) {
-                    centerProperty();
-                  } else {
-                    controller.moveCamera(
-                      CameraUpdate.newCameraPosition(camera),
+              AreaDragSurface(
+                key: areaDragKey,
+                areas: [
+                  for (final layer in p?.layers ?? <PropertyLayer>[])
+                    if (layer.kind == LayerKind.area &&
+                        layer.visible &&
+                        state.areaResults[layer.id]?.valid == true)
+                      layer,
+                ],
+                excludedPoints: points,
+                enabled: !busy && !measuring,
+                hasSelection: selectedArea != null,
+                onTapOutside: clearAreaSelection,
+                project: projectAreaPoint,
+                unproject: unprojectAreaPoint,
+                onStart: startAreaDrag,
+                onMove: moveArea,
+                onEnd: () => setState(() => dragTransform = null),
+                onCancel: () {
+                  if (selectedArea != null && dragTransform != null) {
+                    state.replaceAreaPoints(
+                      selectedArea!.id,
+                      dragTransform!.points,
                     );
                   }
+                  setState(() => dragTransform = null);
                 },
-                onCameraMove: (position) => camera = position,
-                onCameraIdle: () {
-                  if (_transferring) return;
-                  captureCamera();
-                  if (state.dirty) {
-                    state.persistDraft();
-                  }
-                },
-                myLocationEnabled: locationGranted,
-                myLocationButtonEnabled: false,
-                zoomControlsEnabled: false,
-                mapToolbarEnabled: false,
-                padding: EdgeInsets.only(
-                  bottom: p == null
-                      ? 100
-                      : (measuring || boundaryVisible ? 200 : 12),
-                  top: 12,
-                ),
-                onTap: (point) {
-                  if (measuring && !busy) {
-                    state.addLayerPoint(point.latitude, point.longitude);
-                  }
-                },
-                markers: {
-                  if (showMapLabels)
-                    for (final label in measurementLabels)
-                      if (measurementIcons[label.iconKey] != null)
+                child: GoogleMap(
+                  initialCameraPosition: camera,
+                  mapType: mapType,
+                  scrollGesturesEnabled: dragTransform == null,
+                  zoomGesturesEnabled: dragTransform == null,
+                  rotateGesturesEnabled: dragTransform == null,
+                  tiltGesturesEnabled: dragTransform == null,
+                  onMapCreated: (controller) {
+                    map = controller;
+                    areaDragKey.currentState?.refreshProjection();
+                    if (state.property != null) {
+                      centerProperty();
+                    } else {
+                      controller.moveCamera(
+                        CameraUpdate.newCameraPosition(camera),
+                      );
+                    }
+                  },
+                  onCameraMove: (position) {
+                    camera = position;
+                    areaDragKey.currentState?.cameraMoving();
+                  },
+                  onCameraIdle: () {
+                    areaDragKey.currentState?.refreshProjection();
+                    if (_transferring) return;
+                    captureCamera();
+                    if (state.dirty) {
+                      state.persistDraft();
+                    }
+                  },
+                  myLocationEnabled: locationGranted,
+                  myLocationButtonEnabled: false,
+                  zoomControlsEnabled: false,
+                  mapToolbarEnabled: false,
+                  padding: EdgeInsets.only(
+                    bottom: p == null
+                        ? (exploring ? 12 : 100)
+                        : (measuring || selectedArea != null || boundaryVisible
+                              ? 200
+                              : 12),
+                    top: 12,
+                  ),
+                  onTap: (point) {
+                    if (selectedArea != null) {
+                      clearAreaSelection();
+                      return;
+                    }
+                    if (measuring && !busy) {
+                      state.addLayerPoint(point.latitude, point.longitude);
+                    }
+                  },
+                  markers: {
+                    if (showMapLabels)
+                      for (final label in measurementLabels)
+                        if (measurementIcons[label.iconKey] != null)
+                          Marker(
+                            markerId: MarkerId('measurement-label-${label.id}'),
+                            position: LatLng(label.latitude, label.longitude),
+                            icon: measurementIcons[label.iconKey]!,
+                            anchor: label.area
+                                ? const Offset(.5, .5)
+                                : const Offset(.5, 1.1),
+                            zIndexInt: 1,
+                            consumeTapEvents: true,
+                            onTap: busy
+                                ? null
+                                : () => state.cycleLayerTagUnit(label.id),
+                          ),
+                    if (!measuring)
+                      for (final point in points)
                         Marker(
-                          markerId: MarkerId('measurement-label-${label.id}'),
-                          position: LatLng(label.latitude, label.longitude),
-                          icon: measurementIcons[label.iconKey]!,
-                          anchor: label.area
-                              ? const Offset(.5, .5)
-                              : const Offset(.5, 1.1),
-                          zIndexInt: 1,
-                          consumeTapEvents: true,
-                          onTap: busy
-                              ? null
-                              : () => state.cycleLayerTagUnit(label.id),
+                          markerId: MarkerId(point.id),
+                          position: ll(point),
+                          draggable: editing && !measuring && !busy,
+                          zIndexInt: 2,
+                          anchor: const Offset(.5, .5),
+                          icon:
+                              markerIcons[point.label] ??
+                              BitmapDescriptor.defaultMarkerWithHue(
+                                BitmapDescriptor.hueGreen,
+                              ),
+                          infoWindow: InfoWindow(
+                            title: point.label,
+                            snippet:
+                                '${point.latitude.toStringAsFixed(6)}, ${point.longitude.toStringAsFixed(6)}',
+                            onTap: () => editPoint(point),
+                          ),
+                          onTap: () {
+                            if (!measuring) {
+                              editPoint(point);
+                            }
+                          },
+                          onDrag: (position) =>
+                              moveBoundaryPoint(point.id, position),
+                          onDragEnd: (position) =>
+                              moveBoundaryPoint(point.id, position),
                         ),
-                  if (!measuring)
-                    for (final point in points)
-                      Marker(
-                        markerId: MarkerId(point.id),
-                        position: ll(point),
-                        draggable: editing && !measuring && !busy,
-                        zIndexInt: 2,
-                        anchor: const Offset(.5, .5),
-                        icon:
-                            markerIcons[point.label] ??
-                            BitmapDescriptor.defaultMarkerWithHue(
-                              BitmapDescriptor.hueGreen,
-                            ),
-                        infoWindow: InfoWindow(
-                          title: point.label,
-                          snippet:
-                              '${point.latitude.toStringAsFixed(6)}, ${point.longitude.toStringAsFixed(6)}',
-                          onTap: () => editPoint(point),
+                    if (state.activeLayer?.visible == true)
+                      for (final point in state.activeLayer!.points)
+                        Marker(
+                          markerId: MarkerId('layer-${point.id}'),
+                          position: ll(point),
+                          draggable: !busy,
+                          zIndexInt: 3,
+                          icon: BitmapDescriptor.defaultMarkerWithHue(
+                            state.activeLayer!.kind == LayerKind.area
+                                ? BitmapDescriptor.hueOrange
+                                : BitmapDescriptor.hueAzure,
+                          ),
+                          infoWindow: InfoWindow(title: point.label),
+                          onTap: () =>
+                              editPoint(point, layerId: state.activeLayer!.id),
+                          onDrag: (position) => state.moveLayerPoint(
+                            state.activeLayer!.id,
+                            point.id,
+                            position.latitude,
+                            position.longitude,
+                          ),
+                          onDragEnd: (position) => state.moveLayerPoint(
+                            state.activeLayer!.id,
+                            point.id,
+                            position.latitude,
+                            position.longitude,
+                          ),
                         ),
-                        onTap: () {
-                          if (!measuring) {
-                            editPoint(point);
-                          }
-                        },
-                        onDrag: (position) =>
-                            moveBoundaryPoint(point.id, position),
-                        onDragEnd: (position) =>
-                            moveBoundaryPoint(point.id, position),
-                      ),
-                  if (state.activeLayer?.visible == true)
-                    for (final point in state.activeLayer!.points)
-                      Marker(
-                        markerId: MarkerId('layer-${point.id}'),
-                        position: ll(point),
-                        draggable: !busy,
-                        zIndexInt: 3,
-                        icon: BitmapDescriptor.defaultMarkerWithHue(
-                          state.activeLayer!.kind == LayerKind.area
-                              ? BitmapDescriptor.hueOrange
-                              : BitmapDescriptor.hueAzure,
-                        ),
-                        infoWindow: InfoWindow(title: point.label),
-                        onTap: () =>
-                            editPoint(point, layerId: state.activeLayer!.id),
-                        onDrag: (position) => state.moveLayerPoint(
-                          state.activeLayer!.id,
-                          point.id,
-                          position.latitude,
-                          position.longitude,
-                        ),
-                        onDragEnd: (position) => state.moveLayerPoint(
-                          state.activeLayer!.id,
-                          point.id,
-                          position.latitude,
-                          position.longitude,
-                        ),
-                      ),
-                },
-                polygons: {
-                  if (points.length >= 3)
-                    Polygon(
-                      polygonId: const PolygonId('property'),
-                      points: points.map(ll).toList(),
-                      geodesic: true,
-                      strokeWidth: 3,
-                      strokeColor: state.result.valid
-                          ? const Color(0xffa5ff59)
-                          : Colors.redAccent,
-                      fillColor:
-                          (state.result.valid ? Colors.greenAccent : Colors.red)
-                              .withValues(alpha: .18),
-                    ),
-                  for (final layer in p?.layers ?? <PropertyLayer>[])
-                    if (layer.visible &&
-                        layer.kind == LayerKind.area &&
-                        layer.points.length >= 3)
+                  },
+                  polygons: {
+                    if (points.length >= 3)
                       Polygon(
-                        polygonId: PolygonId(layer.id),
-                        points: layer.points.map(ll).toList(),
+                        polygonId: const PolygonId('property'),
+                        points: points.map(ll).toList(),
                         geodesic: true,
-                        strokeWidth: state.activeLayerId == layer.id ? 4 : 2,
-                        strokeColor: state.layerErrors[layer.id]!.isEmpty
-                            ? Colors.orangeAccent
+                        strokeWidth: 3,
+                        strokeColor: state.result.valid
+                            ? const Color(0xffa5ff59)
                             : Colors.redAccent,
-                        fillColor: Colors.orange.withValues(alpha: .22),
-                        zIndex: 1,
-                        consumeTapEvents: !measuring,
-                        onTap: () => state.selectLayer(layer.id),
+                        fillColor:
+                            (state.result.valid
+                                    ? Colors.greenAccent
+                                    : Colors.red)
+                                .withValues(alpha: .18),
                       ),
-                },
-                polylines: {
-                  for (final layer in p?.layers ?? <PropertyLayer>[])
-                    if (layer.visible &&
-                        layer.points.length >= 2 &&
-                        (layer.kind == LayerKind.distance ||
-                            layer.points.length < 3))
-                      Polyline(
-                        polylineId: PolylineId(layer.id),
-                        points: layer.points.map(ll).toList(),
-                        geodesic: true,
-                        width: state.activeLayerId == layer.id ? 5 : 3,
-                        color: layer.kind == LayerKind.area
-                            ? Colors.orangeAccent
-                            : Colors.lightBlueAccent,
-                        zIndex: 2,
-                        consumeTapEvents: !measuring,
-                        onTap: () => state.selectLayer(layer.id),
-                      ),
-                },
+                    for (final layer in p?.layers ?? <PropertyLayer>[])
+                      if (layer.visible &&
+                          layer.kind == LayerKind.area &&
+                          layer.points.length >= 3)
+                        Polygon(
+                          polygonId: PolygonId(layer.id),
+                          points: layer.points.map(ll).toList(),
+                          geodesic: true,
+                          strokeWidth:
+                              state.activeLayerId == layer.id ||
+                                  selectedAreaId == layer.id
+                              ? 4
+                              : 2,
+                          strokeColor: state.layerErrors[layer.id]!.isEmpty
+                              ? Colors.orangeAccent
+                              : Colors.redAccent,
+                          fillColor: Colors.orange.withValues(alpha: .22),
+                          zIndex: 1,
+                          consumeTapEvents: !measuring,
+                          onTap: () => selectArea(layer.id),
+                        ),
+                  },
+                  polylines: {
+                    for (final layer in p?.layers ?? <PropertyLayer>[])
+                      if (layer.visible &&
+                          layer.points.length >= 2 &&
+                          (layer.kind == LayerKind.distance ||
+                              layer.points.length < 3))
+                        Polyline(
+                          polylineId: PolylineId(layer.id),
+                          points: layer.points.map(ll).toList(),
+                          geodesic: true,
+                          width: state.activeLayerId == layer.id ? 5 : 3,
+                          color: layer.kind == LayerKind.area
+                              ? Colors.orangeAccent
+                              : Colors.lightBlueAccent,
+                          zIndex: 2,
+                          consumeTapEvents: !measuring,
+                          onTap: () {
+                            clearAreaSelection();
+                            state.selectLayer(layer.id);
+                          },
+                        ),
+                  },
+                ),
               ),
               Positioned(
                 right: 12,
@@ -1482,6 +1753,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
+                          if (selectedArea != null) areaSelectionPanel(),
                           if (state.activeLayer != null)
                             LayerEditorPanel(
                               layer: state.activeLayer!,
@@ -1502,9 +1774,12 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                                 index,
                               ),
                             ),
-                          if (p != null && !measuring && boundaryVisible)
+                          if (p != null &&
+                              !measuring &&
+                              selectedArea == null &&
+                              boundaryVisible)
                             summary()
-                          else if (p == null)
+                          else if (p == null && !exploring)
                             Card(
                               child: Padding(
                                 padding: const EdgeInsets.all(20),
@@ -1529,6 +1804,13 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                                       icon: const Icon(Icons.add),
                                       label: const Text('Create Property'),
                                     ),
+                                    TextButton.icon(
+                                      onPressed: busy
+                                          ? null
+                                          : () => safe(explore),
+                                      icon: const Icon(Icons.explore_outlined),
+                                      label: const Text('Explore'),
+                                    ),
                                   ],
                                 ),
                               ),
@@ -1548,57 +1830,80 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
             padding: EdgeInsets.fromLTRB(4, 6, 4, bottom + 6),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                tool(
-                  Icons.folder_outlined,
-                  'Properties',
-                  () => safe(properties),
-                ),
-                tool(
-                  Icons.edit_location_alt,
-                  'Boundary',
-                  p == null
-                      ? null
-                      : () => setState(() {
-                          boundaryVisible = measuring ? true : !boundaryVisible;
-                          state.finishLayer();
-                        }),
-                  active: boundaryVisible && p != null && !measuring,
-                ),
-                tool(
-                  Icons.add_location_alt_outlined,
-                  'Add point',
-                  p == null || (!measuring && !editing)
-                      ? null
-                      : () => safe(insertPoint),
-                ),
-                tool(
-                  Icons.straighten,
-                  'Measure',
-                  p == null
-                      ? null
-                      : () => safe(() => startLayer(LayerKind.distance)),
-                  active: state.activeLayer?.kind == LayerKind.distance,
-                ),
-                tool(
-                  Icons.layers_outlined,
-                  'Layers',
-                  p == null ? null : () => safe(showLayers),
-                  active: measuring,
-                ),
-                tool(
-                  Icons.info_outline,
-                  'Details',
-                  p == null
-                      ? null
-                      : () => setState(() {
-                          details = boundaryVisible ? !details : true;
-                          boundaryVisible = true;
-                          state.finishLayer();
-                        }),
-                  active: details && boundaryVisible && !measuring,
-                ),
-              ],
+              children: selectedArea != null
+                  ? [
+                      tool(
+                        Icons.aspect_ratio,
+                        'Resize',
+                        () => beginAreaTransform('resize'),
+                        active: areaTransformMode == 'resize',
+                      ),
+                      tool(
+                        Icons.rotate_right,
+                        'Rotate',
+                        () => beginAreaTransform('rotate'),
+                        active: areaTransformMode == 'rotate',
+                      ),
+                      tool(Icons.edit_location_alt, 'Edit points', () {
+                        final id = selectedAreaId!;
+                        clearAreaSelection();
+                        state.selectLayer(id);
+                      }),
+                      tool(Icons.check, 'Done', clearAreaSelection),
+                    ]
+                  : [
+                      tool(
+                        Icons.folder_outlined,
+                        'Properties',
+                        () => safe(properties),
+                      ),
+                      tool(
+                        Icons.edit_location_alt,
+                        'Boundary',
+                        p == null
+                            ? null
+                            : () => setState(() {
+                                boundaryVisible = measuring
+                                    ? true
+                                    : !boundaryVisible;
+                                state.finishLayer();
+                              }),
+                        active: boundaryVisible && p != null && !measuring,
+                      ),
+                      tool(
+                        Icons.add_location_alt_outlined,
+                        'Add point',
+                        p == null || (!measuring && !editing)
+                            ? null
+                            : () => safe(insertPoint),
+                      ),
+                      tool(
+                        Icons.straighten,
+                        'Measure',
+                        p == null
+                            ? null
+                            : () => safe(() => startLayer(LayerKind.distance)),
+                        active: state.activeLayer?.kind == LayerKind.distance,
+                      ),
+                      tool(
+                        Icons.layers_outlined,
+                        'Layers',
+                        p == null ? null : () => safe(showLayers),
+                        active: measuring,
+                      ),
+                      tool(
+                        Icons.info_outline,
+                        'Details',
+                        p == null
+                            ? null
+                            : () => setState(() {
+                                details = boundaryVisible ? !details : true;
+                                boundaryVisible = true;
+                                state.finishLayer();
+                              }),
+                        active: details && boundaryVisible && !measuring,
+                      ),
+                    ],
             ),
           ),
         ),

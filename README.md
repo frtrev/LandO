@@ -54,7 +54,7 @@ The server includes input limits, a timeout and per-connection-IP request limiti
 
 ## Using LandO
 
-1. With no saved property or recovered draft, LandO requests foreground location permission and centers on your current location. Saved properties and drafts retain their own map view. Disabled/denied/timed-out location leaves the map usable for search or panning. A delayed startup fix does not override a property you opened or a map you already moved/searched. Use My location to try again at any time.
+1. With no selected property or recovered draft, LandO requests foreground location permission and centers on your current location, even when other saved properties exist. Selected properties and drafts retain their own map view. Disabled/denied/timed-out location leaves the map usable for search or panning. A delayed startup fix does not override a property you opened or a map you already moved/searched. Use My location to try again at any time.
 2. Choose **Create Property**, enter its name, and adjust the four initial corners. The initial rectangle is a viewport-relative starter shape, not an inferred parcel boundary.
 3. Drag lettered corners in **Boundary** mode. Tap a corner to enter decimal latitude/longitude (eight digits shown in editor, six in details) or delete it. At least three corners remain.
 4. **Add point** asks which edge to split. A geodesic midpoint is inserted in that exact position, with a new permanent label: A → B → E → C → D → A. Move it to the intended corner. Labels extend through Z, AA, AB, etc. No automatic geographic sorting occurs.
@@ -186,3 +186,15 @@ The map's label button shows/hides compact name-and-value badges for valid areas
 Each area and measurement in **Layers** has an eye button to show or hide its map shape, label, and editing points. Hidden layers remain in the property and its measurements; hiding does not delete data. Save the property to retain visibility choices across reopening and backups. Editing a hidden layer reveals it; hiding the active layer exits its editor. Older properties start with all layers visible.
 
 Tap an area or measurement map tag to cycle its displayed units. Imperial areas cycle acres → sq ft → sq yd → sq mi; distances cycle ft → yd → mi. Metric areas cycle ha → m² → km²; distances cycle m → cm → km. Each layer remembers separate imperial and metric choices, stored with the property, recovery draft, and backup. Save the property to retain the selection. Cycling changes only the tag display and leaves measured geometry unchanged.
+
+### Move, resize, and rotate custom areas
+
+Tap a valid custom area on the map to select it. The bottom menu changes to **Resize**, **Rotate**, **Edit points**, and **Done**. Resize and Rotate open live sliders with **Apply** and **Cancel**; tapping outside the area or Done accepts the current preview and returns to the property menu. Edit points opens the existing corner editor. Creating unfinished areas and drawing distance measurements keep their existing point-entry workflow.
+
+Hold inside a visible custom area until the selection feedback, then drag to move the whole shape. Quick pans and gestures outside custom areas remain map gestures; boundary corner markers remain independently draggable when unlocked. This does not transform the property boundary or distance paths. Hidden or invalid custom areas are excluded from whole-area gestures. Transformations use immutable starting snapshots and WGS84 distances/bearings, preserve point identifiers and layer metadata, and reject unsupported coordinates/geometry. Save the property to retain the transformed coordinates; recovery drafts and backups also contain them.
+
+`test/area_transform_test.dart`, `test/area_drag_surface_test.dart`, and `test/area_selection_test.dart` cover geometry, gesture recognition, and context controls. `integration_test/area_editing_test.dart` verifies native map gestures using a synthetic in-memory property, without touching saved properties or calling assistant APIs. Grant simulator location permission or use a clean simulator so system permission prompts cannot obscure the map.
+
+### Explore without a selected property
+
+Choose **Explore** from the welcome card or **Properties** list to browse the unobstructed map without selecting a property. Saved properties remain available in Properties, where you can also create a new one. Leaving unsaved edits uses the normal save/discard/keep-editing prompt. Explore clears the last selected property and recovery draft, so restarting without a selection centers on the current device location rather than a saved-property view. Location denial or unavailability still leaves map search and panning usable.
