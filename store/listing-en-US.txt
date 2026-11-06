@@ -1,0 +1,28 @@
+App name: LandO: Property Mapper
+Short description: Map property boundaries, save areas, measure land and plan with LandO.
+
+Full description:
+Your land. Your perspective.
+
+LandO helps you explore, map and plan properties with satellite maps and measurements you control.
+
+MAP YOUR PROPERTY
+Create an editable boundary, organize saved properties, search for addresses and explore the map. Lock coordinates when you want to protect your boundary from accidental edits.
+
+MEASURE WHAT MATTERS
+Save multiple independent areas and distance paths as part of each property. Show or hide map layers and measurement labels. Switch label units and work in imperial or metric units. Move, resize and rotate custom areas while planning a layout.
+
+ASK LANDO
+Ask conversational questions about the selected property and its saved measurements. Read a short answer first, then open the calculations, details and source links when you need them. Optional internet research can help with current installation-cost questions and planning estimates.
+
+CHOOSE HOW YOUR ASSISTANT RUNS
+Use your own Gemini or OpenAI API key, or download the optional on-device Qwen assistant on compatible 64-bit Android installations. The local model is about 508 MiB and requires free storage and device memory. Cloud providers may charge for API and search usage. You can use mapping without configuring an AI provider. Smaller local models may be less accurate or slower.
+
+KEEP YOUR DATA
+Properties and conversations are stored on your device. Export a backup to Files or another app and restore it on another installation. API keys and downloaded model weights are not included in backup files. No LandO account is required.
+
+Location permission is optional. Maps, address searches, cloud AI and internet research need connectivity; saved geometry and app calculations remain available locally. On-device AI can answer offline after its model is downloaded and internet research is disabled.
+
+IMPORTANT: Boundaries, dimensions and quantities are map-derived planning estimates, not legal surveys, proof of ownership or permit approval. AI answers and online prices may be inaccurate or outdated. Obtain professional surveys and local contractor quotes before relying on an estimate.
+
+Support: ftrevino@yahoo.com

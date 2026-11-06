@@ -6,6 +6,7 @@ import '../../services/assistant/api_key_store.dart';
 import '../../services/assistant/openai_assistant.dart';
 import '../../services/property_repository.dart';
 import 'ai_settings_sheet.dart';
+import 'assistant_sharing_consent.dart';
 import 'conversations_sheet.dart';
 import '../../models/chat_conversation.dart';
 
@@ -78,14 +79,22 @@ class _PropertyChatSheetState extends State<PropertyChatSheet> {
     }
   }
 
-  void send([String? suggestion]) {
+  bool checkingConsent = false;
+  Future<void> send([String? suggestion, bool retry = false]) async {
     final question = (suggestion ?? input.text).trim();
-    if (question.isEmpty) {
-      return;
-    }
-    input.clear();
-    FocusScope.of(context).unfocus();
-    chat.send(question).then((_) {
+    if (question.isEmpty || chat.unavailable || checkingConsent) return;
+    checkingConsent = true;
+    try {
+      final allowed = await AssistantSharingConsent.request(
+        context,
+        widget.repository,
+        chat.provider,
+        chat.queryInternet,
+      );
+      if (!mounted || !allowed) return;
+      if (!retry) input.clear();
+      FocusScope.of(context).unfocus();
+      await chat.send(question, retry: retry);
       if (mounted && scroll.hasClients) {
         scroll.animateTo(
           scroll.position.maxScrollExtent,
@@ -93,7 +102,16 @@ class _PropertyChatSheetState extends State<PropertyChatSheet> {
           curve: Curves.easeOut,
         );
       }
-    });
+    } on Object {
+      if (mounted) {
+        setState(
+          () => chat.error =
+              'Could not save your data-sharing choice. Please try again.',
+        );
+      }
+    } finally {
+      checkingConsent = false;
+    }
   }
 
   Future<void> clear() async {
@@ -375,7 +393,7 @@ class _PropertyChatSheetState extends State<PropertyChatSheet> {
                         ),
                         const SizedBox(height: 8),
                         Text(
-                          'Sending shares your messages, recent conversation and property data with your configured AI service. Internet research may share relevant context with search services when enabled in AI settings. Results are planning estimates, not legal surveys.',
+                          'With a cloud provider, sending shares your messages, recent conversation and property data with that AI service. The on-device assistant processes chat locally. Internet research may share relevant context with search services when enabled in AI settings. Results are planning estimates, not legal surveys.',
                           style: const TextStyle(fontSize: 11),
                         ),
                         if (!chat.configured)
@@ -440,8 +458,7 @@ class _PropertyChatSheetState extends State<PropertyChatSheet> {
                             chat.retryQuestion != null &&
                             chat.configured)
                           TextButton(
-                            onPressed: () =>
-                                chat.send(chat.retryQuestion!, retry: true),
+                            onPressed: () => send(chat.retryQuestion!, true),
                             child: const Text('Continue last question'),
                           ),
                         if (chat.error != null) ...[
@@ -455,8 +472,7 @@ class _PropertyChatSheetState extends State<PropertyChatSheet> {
                               chat.retryQuestion != null &&
                               chat.configured)
                             TextButton(
-                              onPressed: () =>
-                                  chat.send(chat.retryQuestion!, retry: true),
+                              onPressed: () => send(chat.retryQuestion!, true),
                               child: const Text('Retry question'),
                             ),
                         ],

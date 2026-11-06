@@ -1,0 +1,43 @@
+LandO Privacy Policy
+Effective November 5, 2026
+
+LandO is a property mapping and planning app. Privacy and support contact: ftrevino@yahoo.com.
+
+Your property data
+Property names, descriptions, boundary coordinates, areas, distance measurements, preferences and conversations are stored in the app's private storage on your device. LandO does not operate a property database server or require a LandO account. There are no advertising or developer-operated analytics services in the app. Third-party services below may process their own operational data.
+
+Location, maps and address search
+With your permission, LandO accesses your location while the app is in use to center the map. Location permission is optional; you can search or pan the map without granting it and revoke it in your device settings. LandO does not request background location, microphone or camera access. Google Maps and Google Places receive map requests, visible map/location context and address searches, and may process IP addresses, device/app information and diagnostics under Google's terms. Maps and address searches require an internet connection.
+
+Optional cloud AI
+If you choose a cloud assistant and send a question, your question, recent conversation and app-calculated property context are sent over HTTPS to your selected provider, OpenAI or Google Gemini. Property context may contain precise coordinates and names or descriptions you entered. API keys are stored using the platform's secure storage and sent to the corresponding service to authenticate your chosen requests. Provider retention, billing and use of data depend on your account and that provider's terms. Review those terms before sending sensitive information. LandO asks for your permission before sharing assistant data; you can decline and continue mapping.
+
+On-device AI and downloads
+The optional Qwen assistant downloads a model from Hugging Face and processes questions and property calculations on your device. The download service sees ordinary connection information, such as your IP address. Model weights use app-private storage and can be removed in AI settings. They are excluded from LandO backup files. Smaller on-device models can make mistakes.
+
+Optional internet research
+Query the internet is enabled by default and can be turned off in AI settings. With cloud AI, research uses your selected provider's search service. With on-device AI, search queries are sent to DuckDuckGo. Queries may include location or context from your question or conversation. Search services receive normal connection information and handle requests under their own policies. On-device questions with internet research disabled are processed locally. Opening a source link sends you to that site's own service and privacy policy.
+
+AI-answer reports and support
+You can report an answer from inside the app. When you press Send report, the selected reason and any comments you enter are sent through FormSubmit (formsubmit.co) to the LandO support inbox at ftrevino@yahoo.com. The answer itself is included only if you select the checkbox. A report does not automatically include your full chat, property database, API keys, location or a contact email. Content you choose to include may itself contain property information. FormSubmit and the email provider process the submission and connection information under their own policies. Do not include passwords, API keys or information you do not want to share. Reports and support correspondence are retained as needed to investigate and resolve issues, and may be retained for security or legal obligations. Contact support to request deletion of identifiable report or support information. LandO does not control third-party retention.
+
+Backup and sharing
+Export creates a readable file containing your properties, coordinates, conversations and preferences. You decide whether to save it or share it with another app. API keys and downloaded models are excluded. Anyone with the exported file can read its contents. Copies you save or send are managed by you and the services you choose. Review their access and retention settings.
+
+Your choices and deletion
+You can delete individual properties and their conversations, manage conversations, remove stored AI keys in AI settings, remove the local model, disable internet research, revoke location permission, or use Android Settings to clear LandO storage. Uninstalling the Android app removes its private app data. Exported files and data already sent to third-party services are not removed by deleting local app data; delete those copies separately or use the provider's own controls. LandO has no account to delete. Permission to share assistant data must be granted again after a backup is restored.
+
+Security and important limits
+Network services use HTTPS. Device storage protections depend on your operating system and device security; exported backup files are not encrypted by LandO. No method of storage or transmission provides an absolute guarantee. AI answers, prices and map-derived measurements are planning estimates, not legal surveys, verified contractor quotes, appraisals, or guarantees of ownership or permit approval. Confirm important decisions with qualified professionals.
+
+Audience and changes
+LandO is intended for general adult property planning and is not directed to children. Do not enter children's personal information. This policy may change when features or data handling change; the effective date will be updated. Questions about privacy can be sent to ftrevino@yahoo.com.
+
+Third-party information
+Google: https://policies.google.com/privacy
+Google Maps terms: https://www.google.com/help/terms_maps/
+OpenAI: https://openai.com/policies/privacy-policy/
+Gemini API terms: https://ai.google.dev/gemini-api/terms
+DuckDuckGo: https://duckduckgo.com/privacy
+Hugging Face: https://huggingface.co/privacy
+FormSubmit: https://formsubmit.co/privacy.pdf

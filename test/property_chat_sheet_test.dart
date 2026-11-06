@@ -15,7 +15,13 @@ void main() {
   testWidgets(
     'AI key settings save securely, keep a saved key hidden and remove it',
     (tester) async {
-      final repo = ChatMemoryRepository(), keys = MemoryKeyStore();
+      final repo = ChatMemoryRepository()
+            ..preferences.addAll({
+              for (final p in AssistantProvider.values)
+                for (final web in ['web', 'offline'])
+                  'assistantConsent:v1:${p.name}:$web': 'true',
+            }),
+          keys = MemoryKeyStore();
       Future<void> open() async {
         await tester.pumpWidget(
           MaterialApp(
@@ -81,7 +87,12 @@ void main() {
   testWidgets(
     'chat sends questions, shows app results, and fits a small landscape screen',
     (tester) async {
-      final repo = ChatMemoryRepository(),
+      final repo = ChatMemoryRepository()
+            ..preferences.addAll({
+              for (final p in AssistantProvider.values)
+                for (final web in ['web', 'offline'])
+                  'assistantConsent:v1:${p.name}:$web': 'true',
+            }),
           keys = MemoryKeyStore('sk-test'),
           property = exampleProperty();
       await tester.binding.setSurfaceSize(const Size(390, 844));
@@ -147,7 +158,13 @@ void main() {
   testWidgets(
     'settings keep keys and models separate while switching between Gemini and OpenAI',
     (tester) async {
-      final repo = ChatMemoryRepository(), keys = MemoryKeyStore('sk-existing');
+      final repo = ChatMemoryRepository()
+            ..preferences.addAll({
+              for (final p in AssistantProvider.values)
+                for (final web in ['web', 'offline'])
+                  'assistantConsent:v1:${p.name}:$web': 'true',
+            }),
+          keys = MemoryKeyStore('sk-existing');
       repo.preferences['openaiModel'] = 'openai-existing';
       await tester.binding.setSurfaceSize(const Size(390, 844));
       Future<void> open() async {
@@ -248,7 +265,12 @@ void main() {
   testWidgets(
     'chat creates separate conversations, reloads an old one, and resumes only its own history',
     (tester) async {
-      final repo = ChatMemoryRepository(),
+      final repo = ChatMemoryRepository()
+            ..preferences.addAll({
+              for (final p in AssistantProvider.values)
+                for (final web in ['web', 'offline'])
+                  'assistantConsent:v1:${p.name}:$web': 'true',
+            }),
           keys = MemoryKeyStore('sk-test'),
           property = exampleProperty();
       repo.preferences['chat:${property.id}'] = jsonEncode([

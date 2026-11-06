@@ -46,6 +46,11 @@ dependencies:
   webview_flutter: ^4.14.1
   file_picker: ^13.3.2
   share_plus: ^13.3.1
+  llamadart: ^0.17.5
+  llamadart_llama_cpp_flutter: ^0.17.3
+  path_provider: ^2.1.6
+  crypto: ^3.0.8
+  html: ^0.15.7
 
 dev_dependencies:
   flutter_test:
@@ -72,6 +77,9 @@ flutter:
   # included with your application, so that you can use the icons in
   # the material Icons class.
   uses-material-design: true
+  assets:
+    - assets/licenses/qwen-apache-2.0.txt
+    - assets/legal/privacy-policy.txt
 
   # To add assets to your application, add an assets section, like this:
   # assets:
@@ -103,3 +111,9 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+
+# Bundle only the runtime used by the downloaded GGUF model.
+hooks:
+  user_defines:
+    llamadart:
+      llamadart_native_runtimes: [llama_cpp]

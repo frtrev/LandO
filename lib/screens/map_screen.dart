@@ -20,6 +20,7 @@ import '../widgets/assistant/property_chat_sheet.dart';
 import '../widgets/assistant/ai_settings_sheet.dart';
 import '../services/assistant/api_key_store.dart';
 import '../widgets/property_layers_sheet.dart';
+import '../widgets/privacy_policy_page.dart';
 
 class MapScreen extends StatefulWidget {
   final PropertyRepository repository;
@@ -1216,6 +1217,17 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                       Navigator.pop(c);
                       safe(transferData);
                     },
+                  ),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.privacy_tip_outlined),
+                    title: const Text('Privacy & support'),
+                    subtitle: const Text('Data use, deletion and licenses'),
+                    onTap: () => Navigator.of(c).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => const PrivacyPolicyPage(),
+                      ),
+                    ),
                   ),
                   const SizedBox(height: 16),
                   const Text(

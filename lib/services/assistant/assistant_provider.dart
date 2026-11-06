@@ -1,6 +1,7 @@
 enum AssistantProvider {
   openai('OpenAI', 'gpt-5.6-terra', 'openaiModel'),
-  gemini('Gemini', 'gemini-3.6-flash', 'geminiModel');
+  gemini('Gemini', 'gemini-3.6-flash', 'geminiModel'),
+  qwen('Qwen', 'Qwen3.5-0.8B-Q4_K_M', 'qwenModel');
 
   final String label;
   final String defaultModel;

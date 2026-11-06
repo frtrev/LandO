@@ -56,3 +56,10 @@ ios/Flutter/MapsSecrets.xcconfig
 
 # Android Gradle diagnostics
 /android/build/
+
+# Play upload signing credentials (back up privately)
+android/key.properties
+
+# Python release-tool caches
+__pycache__/
+*.pyc

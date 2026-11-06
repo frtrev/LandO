@@ -168,6 +168,8 @@ class DataBackup {
         await txn.insert('properties', {'id': p['id'], 'data': jsonEncode(p)});
       }
       for (final e in checked.preferences.entries) {
+        // Consent belongs to the current installation, not to a shared backup.
+        if (e.key.startsWith('assistantConsent:')) continue;
         await txn.insert('preferences', {'key': e.key, 'value': e.value});
       }
     });

@@ -6,6 +6,7 @@ import '../../models/chat_message.dart';
 import '../../models/answer_excerpt.dart';
 import 'calculation_card.dart';
 import '../../models/web_research.dart';
+import 'report_answer_sheet.dart';
 
 Future<void> openResearchLink(BuildContext context, String url) async {
   if (!WebCitation.validUrl(url)) return;
@@ -30,7 +31,7 @@ class ResearchedAnswer extends StatelessWidget {
   final ChatMessage message;
   const ResearchedAnswer({super.key, required this.message});
   static const shortDisclaimer =
-      'Planning guidance only. Verify before acting.';
+      'AI-generated planning guidance. Verify before acting.';
   static const fullDisclaimer =
       '${WebResearch.disclaimer} Mapped boundaries, dimensions and quantities are planning estimates, not legal surveys. Material requirements depend on the assumptions shown in the calculations. Confirm site conditions, measurements, access, taxes, permits and exclusions with qualified local professionals before committing to work.';
 
@@ -134,6 +135,18 @@ class ResearchedAnswer extends StatelessWidget {
               style: TextButton.styleFrom(padding: EdgeInsets.zero),
               onPressed: () => showDisclaimer(context),
               child: const Text('Full disclaimer'),
+            ),
+            TextButton.icon(
+              style: TextButton.styleFrom(padding: EdgeInsets.zero),
+              onPressed: () => showModalBottomSheet<void>(
+                context: context,
+                isScrollControlled: true,
+                useSafeArea: true,
+                showDragHandle: true,
+                builder: (_) => ReportAnswerSheet(message: message),
+              ),
+              icon: const Icon(Icons.flag_outlined, size: 16),
+              label: const Text('Report answer'),
             ),
           ],
         ),

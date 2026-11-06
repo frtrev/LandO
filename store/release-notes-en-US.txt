@@ -1,0 +1,7 @@
+First release of LandO.
+• Map and save property boundaries.
+• Save areas and distance measurements with each property.
+• Organize layers and change measurement units.
+• Ask LandO about your property, with optional internet research.
+• Choose cloud AI or download an on-device assistant.
+• Back up and restore property data and conversations.

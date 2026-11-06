@@ -69,6 +69,18 @@ void main() {
   });
   tearDown(() async => repo.db.close());
 
+  test(
+    'restore preserves data but requires new assistant sharing consent',
+    () async {
+      await repo.setPreference('assistantConsent:v1:openai:web', 'true');
+      await repo.setPreference('theme', 'dark');
+      final backup = await DataBackup.capture(repo);
+      await backup.restore(repo);
+      expect(await repo.preference('assistantConsent:v1:openai:web'), isNull);
+      expect(await repo.preference('theme'), 'dark');
+    },
+  );
+
   Future<DataBackup> populate() async {
     await repo.save(property('Farm'));
     final archive = ConversationArchive.empty();

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import 'screens/map_screen.dart';
@@ -6,6 +7,14 @@ import 'services/property_repository.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+  LicenseRegistry.addLicense(() async* {
+    final text = await rootBundle.loadString(
+      'assets/licenses/qwen-apache-2.0.txt',
+    );
+    yield LicenseEntryWithLineBreaks([
+      'Qwen 3.5 (Qwen team; GGUF quantization by Unsloth)',
+    ], text);
+  });
   runApp(const LandOApp());
 }
 

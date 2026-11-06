@@ -6,6 +6,8 @@ import '../models/property.dart';
 import '../services/assistant/api_key_store.dart';
 import '../services/assistant/openai_assistant.dart';
 import '../services/assistant/gemini_assistant.dart';
+import '../services/assistant/qwen_assistant.dart';
+import '../services/assistant/local_model_store.dart';
 import '../services/assistant/assistant_provider.dart';
 import '../services/property_repository.dart';
 
@@ -15,6 +17,7 @@ class PropertyChatController extends ChangeNotifier {
   final PropertyRepository repository;
   final ApiKeyStore keyStore;
   final LandoAssistant Function()? createAssistant;
+  final LocalModelStore? localModels;
   ConversationArchive _archive = ConversationArchive.empty();
   ChatConversation get activeConversation => _archive.active;
   List<ChatMessage> get messages => activeConversation.messages;
@@ -39,6 +42,7 @@ class PropertyChatController extends ChangeNotifier {
     required this.repository,
     required this.keyStore,
     this.createAssistant,
+    this.localModels,
   });
   void _notify() {
     if (!_disposed) {
@@ -69,8 +73,9 @@ class PropertyChatController extends ChangeNotifier {
     provider = AssistantProvider.parse(
       await repository.preference('aiProvider'),
     );
-    configured =
-        (await keyStore.read(provider: provider))?.trim().isNotEmpty ?? false;
+    configured = provider == AssistantProvider.qwen
+        ? await (localModels ?? LocalModelStore.shared).isInstalled()
+        : (await keyStore.read(provider: provider))?.trim().isNotEmpty ?? false;
     model =
         await repository.preference(provider.modelPreference) ??
         provider.defaultModel;
@@ -98,8 +103,16 @@ class PropertyChatController extends ChangeNotifier {
     final conversation = activeConversation;
     _notify();
     try {
-      final key = await keyStore.read(provider: provider);
-      if (key == null || key.trim().isEmpty) {
+      final local = provider == AssistantProvider.qwen;
+      final key = local ? '' : await keyStore.read(provider: provider);
+      if (local &&
+          !await (localModels ?? LocalModelStore.shared).isInstalled()) {
+        configured = false;
+        throw const AssistantException(
+          'Download the on-device assistant in AI settings to ask LandO.',
+        );
+      }
+      if (!local && (key == null || key.trim().isEmpty)) {
         configured = false;
         throw AssistantException(
           'Add your API key in AI settings to ask LandO.',
@@ -126,13 +139,15 @@ class PropertyChatController extends ChangeNotifier {
       }
       _active =
           createAssistant?.call() ??
-          (provider == AssistantProvider.gemini
-              ? GeminiAssistant()
-              : OpenAiAssistant());
+          switch (provider) {
+            AssistantProvider.gemini => GeminiAssistant(),
+            AssistantProvider.qwen => QwenAssistant(models: localModels),
+            AssistantProvider.openai => OpenAiAssistant(),
+          };
       final reply = await _active!.ask(
         property: snapshot,
         history: List.unmodifiable(conversation.messages),
-        apiKey: key,
+        apiKey: key ?? '',
         model: model,
         queryInternet: queryInternet,
         onCalculation: (record) {

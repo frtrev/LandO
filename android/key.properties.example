@@ -1,0 +1,6 @@
+# Copy to key.properties and fill with your own upload signing credentials.
+# A relative storeFile resolves from the android/ directory.
+storeFile=upload-keystore.jks
+storePassword=REPLACE_LOCALLY
+keyPassword=REPLACE_LOCALLY
+keyAlias=lando-upload

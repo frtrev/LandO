@@ -76,6 +76,26 @@ import GooglePlaces
           }
         }
     }
+    if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "LandOLocalModels") {
+      FlutterMethodChannel(name: "lando/local_models", binaryMessenger: registrar.messenger())
+        .setMethodCallHandler { call, result in
+          guard call.method == "excludeFromBackup",
+                let args = call.arguments as? [String: String],
+                let path = args["path"],
+                path.hasPrefix(NSHomeDirectory() + "/Library/") else {
+            result(FlutterMethodNotImplemented); return
+          }
+          do {
+            var url = URL(fileURLWithPath: path)
+            var values = URLResourceValues()
+            values.isExcludedFromBackup = true
+            try url.setResourceValues(values)
+            result(nil)
+          } catch {
+            result(FlutterError(code: "backup_exclusion", message: "Could not prepare model storage.", details: nil))
+          }
+        }
+    }
     if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "LandOConfig") {
       FlutterMethodChannel(name: "lando/config", binaryMessenger: registrar.messenger())
         .setMethodCallHandler { call, result in
