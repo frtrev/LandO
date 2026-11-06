@@ -8,5 +8,8 @@ abstract final class ReleaseConfig {
     'AI_REPORT_ENDPOINT',
     defaultValue: 'https://formsubmit.co/ajax/ftrevino@yahoo.com',
   );
-  static const privacyPolicyUrl = String.fromEnvironment('PRIVACY_POLICY_URL');
+  static const privacyPolicyUrl = String.fromEnvironment(
+    'PRIVACY_POLICY_URL',
+    defaultValue: 'https://frtrev.github.io/apps/lando/privacy/',
+  );
 }

@@ -19,7 +19,7 @@ void main() {
             ..preferences.addAll({
               for (final p in AssistantProvider.values)
                 for (final web in ['web', 'offline'])
-                  'assistantConsent:v1:${p.name}:$web': 'true',
+                  'assistantConsent:v2:${p.name}:$web': 'true',
             }),
           keys = MemoryKeyStore();
       Future<void> open() async {
@@ -91,7 +91,7 @@ void main() {
             ..preferences.addAll({
               for (final p in AssistantProvider.values)
                 for (final web in ['web', 'offline'])
-                  'assistantConsent:v1:${p.name}:$web': 'true',
+                  'assistantConsent:v2:${p.name}:$web': 'true',
             }),
           keys = MemoryKeyStore('sk-test'),
           property = exampleProperty();
@@ -162,7 +162,7 @@ void main() {
             ..preferences.addAll({
               for (final p in AssistantProvider.values)
                 for (final web in ['web', 'offline'])
-                  'assistantConsent:v1:${p.name}:$web': 'true',
+                  'assistantConsent:v2:${p.name}:$web': 'true',
             }),
           keys = MemoryKeyStore('sk-existing');
       repo.preferences['openaiModel'] = 'openai-existing';
@@ -269,7 +269,7 @@ void main() {
             ..preferences.addAll({
               for (final p in AssistantProvider.values)
                 for (final web in ['web', 'offline'])
-                  'assistantConsent:v1:${p.name}:$web': 'true',
+                  'assistantConsent:v2:${p.name}:$web': 'true',
             }),
           keys = MemoryKeyStore('sk-test'),
           property = exampleProperty();

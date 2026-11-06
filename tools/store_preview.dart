@@ -1,4 +1,4 @@
-// Synthetic in-memory demo for Android store screenshots. Use a temporary
+// Synthetic in-memory demo for Android and iOS store screenshots. Use a temporary
 // emulator: flutter run -t tools/store_preview.dart -d EMULATOR_ID
 // This entry point never opens the user's LandO property database.
 import 'package:flutter/material.dart';

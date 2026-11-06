@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -93,6 +94,10 @@ void main() {
       await tester.tap(find.byTooltip('Send question'));
       await tester.pumpAndSettle();
       expect(find.text('Allow assistant data sharing?'), findsOneWidget);
+      expect(
+        find.textContaining('with OpenAI, a third-party AI service'),
+        findsOneWidget,
+      );
       await tester.tap(find.text('Not now'));
       await tester.pumpAndSettle();
       expect(calls, 0);
@@ -178,5 +183,20 @@ void main() {
   test('all cloud prompts include the safety scope', () {
     expect(instructionsForSearch(true), contains(assistantSafetyInstructions));
     expect(instructionsForSearch(false), contains(assistantSafetyInstructions));
+  });
+  testWidgets('iOS legal notices use bundled native SDK text', (tester) async {
+    const channel = MethodChannel('lando/config');
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (call) async {
+          expect(call.method, 'legalNotices');
+          return 'Google Maps\nSDK notices\nGoogle Places\nSDK notices';
+        });
+    addTearDown(() {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, null);
+    });
+    await tester.pumpWidget(const MaterialApp(home: MapsLegalNoticesPage()));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Google Places\nSDK notices'), findsOneWidget);
   });
 }

@@ -1,0 +1,22 @@
+{
+  "checkedAt": "2026-11-06",
+  "bundleIdentifier": "app.neotheone.lando",
+  "version": "1.0.0",
+  "build": "1",
+  "signedArchiveBuilt": true,
+  "archiveChecksPassed": true,
+  "distributionIPAExported": true,
+  "appleAgreementUpdateRequired": false,
+  "distributionSigningReady": true,
+  "appStoreConnectRecordExists": false,
+  "flutterTestsPassed": 112,
+  "staticAnalysisClean": true,
+  "iphoneAndIPadNativeSmokeTestsPassed": true,
+  "nativeIOSAddressSearchPassed": true,
+  "localQwenAndInternetResearchPassed": true,
+  "physicalDeviceTestFlightVerified": false,
+  "reportDeliveryVerified": false,
+  "iosWebsitePolicyCorrectionPublished": false,
+  "distributionIPAVerified": true,
+  "distributionIPAPath": "build/ios/ipa/lando.ipa"
+}

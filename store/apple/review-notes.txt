@@ -1,0 +1,21 @@
+LandO is a property mapping and planning utility for iPhone and iPad. There is no LandO login, subscription, in-app purchase or advertising. Core mapping is usable without setting up an AI provider. Location permission is optional.
+
+Review flow:
+1. Allow foreground location or decline and use search / Explore to move the map manually.
+2. Create and save a property, add boundary points, then add independent areas or distance measurements. Layers controls visibility, and tapping map labels cycles units.
+3. Settings -> Privacy & support includes the complete offline-readable privacy policy and Google Maps/Places notices. Backup & restore exports/imports property data and conversations.
+4. To review AI without a paid cloud account: Settings -> LandO assistant settings -> Qwen -> download the approximately 508 MiB model. Keep the app open during download, verification and local inference. Disable Query the internet for offline answers. Select a saved property, ask LandO a measurement question and open answer details. Internet research is enabled by default and asks for separate permission before using DuckDuckGo.
+5. Gemini and OpenAI are optional integrations using the user's own API key. No production credentials are embedded or supplied in this text. If the review team requires cloud access, provide a dedicated controlled review-project credential privately in App Review Information and keep that access valid.
+
+Downloaded model:
+Qwen3.5-0.8B Q4_K_M GGUF weights are data read by the native llama inference runtime already bundled in the app. The runtime is not downloaded or updated by the model download. The model URL and SHA-256 are pinned in app code; the model is verified before use. Only this declared property-assistant feature uses the weights. The download does not execute scripts or install plugins. The model is stored in the app container and excluded from iCloud backups, and can be removed in settings. Qwen's Apache 2.0 notice is included in Open-source licenses. This explains the implementation for review; Apple determines compliance with Guideline 2.5.2.
+
+External services:
+Google Maps/Places for native maps and address search; optional Google Gemini or OpenAI for cloud questions/research; Hugging Face for the optional pinned model download; DuckDuckGo for local-assistant internet research; FormSubmit and the developer email inbox for voluntary reports in the current build. No developer-operated property database backend exists. Explicit assistant consent names the selected third-party AI provider before sending questions, recent conversation and property context, including possible coordinates. Declining leaves mapping available.
+
+Answers, property geometry and prices are planning guidance, not surveys, verified quotes, appraisals, ownership or permits.
+
+BEFORE PASTING THESE NOTES:
+- Verify actual report delivery or complete the approved Google Form migration. Do not submit an inaccessible report service.
+- Confirm native map tiles and address search work in the distribution-signed app with the iOS-restricted Maps key for app.neotheone.lando.
+- Enter your current review contact name and phone in App Store Connect. Support email: ftrevino@yahoo.com.

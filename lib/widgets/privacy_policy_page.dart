@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../config/release_config.dart';
@@ -70,6 +71,16 @@ class PrivacyPolicyPage extends StatelessWidget {
                     ),
                     child: const Text('Open-source licenses'),
                   ),
+                  if (defaultTargetPlatform == TargetPlatform.iOS)
+                    TextButton(
+                      onPressed: () => Navigator.push(
+                        context,
+                        MaterialPageRoute<void>(
+                          builder: (_) => const MapsLegalNoticesPage(),
+                        ),
+                      ),
+                      child: const Text('Google Maps & Places legal notices'),
+                    ),
                 ],
               ),
             )
@@ -80,6 +91,39 @@ class PrivacyPolicyPage extends StatelessWidget {
               ),
             )
           : const Center(child: CircularProgressIndicator()),
+    ),
+  );
+}
+
+class MapsLegalNoticesPage extends StatefulWidget {
+  const MapsLegalNoticesPage({super.key});
+
+  @override
+  State<MapsLegalNoticesPage> createState() => _MapsLegalNoticesPageState();
+}
+
+class _MapsLegalNoticesPageState extends State<MapsLegalNoticesPage> {
+  late final notices = const MethodChannel(
+    'lando/config',
+  ).invokeMethod<String>('legalNotices');
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('Maps & Places legal notices')),
+    body: FutureBuilder<String?>(
+      future: notices,
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return const Center(child: Text('Could not load legal notices.'));
+        }
+        if (!snapshot.hasData) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        return SingleChildScrollView(
+          padding: const EdgeInsets.all(20),
+          child: SelectableText(snapshot.data!),
+        );
+      },
     ),
   );
 }

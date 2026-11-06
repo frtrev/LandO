@@ -1,0 +1,48 @@
+Name: LandO: Property Mapper
+Subtitle: Map, measure & plan your land
+Primary category: Utilities
+Secondary category (optional): Productivity
+Primary language: English (U.S.)
+Bundle ID: app.neotheone.lando
+SKU suggestion for a new record: lando-ios
+Copyright: 2026 Francisco Trevino
+Support URL: https://frtrev.github.io/apps/lando/support/
+Marketing URL: https://frtrev.github.io/apps/lando/
+Privacy Policy URL: https://frtrev.github.io/apps/lando/privacy/
+Support email: ftrevino@yahoo.com
+
+Keywords (100-character maximum):
+property,land,area,acreage,distance,boundary,parcel,map,measure,fence,garden,planning
+
+Promotional text:
+Your land. Your perspective. Map boundaries, organize areas and measurements, and discuss your plans with LandO.
+
+Description:
+Your land. Your perspective.
+
+LandO helps you explore, map and plan properties with satellite maps and measurements you control.
+
+MAP YOUR PROPERTY
+Create an editable boundary, organize saved properties, search for addresses and explore the map. Lock coordinates to protect your boundary from accidental edits.
+
+MEASURE WHAT MATTERS
+Save multiple independent areas and distance paths with each property. Show or hide layers and measurement labels. Tap labels to switch units and work in imperial or metric measurements. Move, resize and rotate custom areas while planning a layout.
+
+ASK LANDO
+Ask conversational questions about your property and saved measurements. Read a short answer first, then open calculations, details and source links. Keep multiple conversations and pick up where you left off. Optional internet research can help with current installation-cost questions and planning estimates.
+
+CHOOSE HOW YOUR ASSISTANT RUNS
+Use your own Gemini or OpenAI API key, or download the optional on-device Qwen assistant. The local model is about 508 MiB and needs available storage and memory. Cloud providers may charge for API and search usage. Mapping works without setting up an AI provider. Smaller local models may be less accurate or slower.
+
+KEEP YOUR WORK
+Properties and conversations are stored on your device. Export a backup to Files or another app and restore it on another installation. API keys and downloaded models are excluded from backup files. No LandO account is required.
+
+Location permission is optional. Maps, address searches, cloud AI and internet research need connectivity. Saved geometry and app calculations remain available locally. After its model is downloaded, on-device AI can answer offline when internet research is disabled.
+
+Boundaries, dimensions and quantities are map-derived planning estimates, not legal surveys, proof of ownership or permit approval. AI answers and online prices may be inaccurate or outdated. Obtain professional surveys and current local contractor quotes before relying on an estimate.
+
+Support: ftrevino@yahoo.com
+Privacy: https://frtrev.github.io/apps/lando/privacy/
+
+What's New (first release; use if requested):
+Map property boundaries, save areas and distances, organize layers, discuss property plans with LandO, and back up or restore your work.

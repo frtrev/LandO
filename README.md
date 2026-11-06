@@ -208,3 +208,7 @@ Choose **Explore** from the welcome card or **Properties** list to browse the un
 See [Play release steps](store/PLAY_RELEASE.md), [listing text](store/listing-en-US.txt), [Data safety worksheet](store/data-safety-draft.md), and [publishable privacy page](store/privacy-policy.html). The app includes Privacy & support, explicit cloud/search sharing consent, and voluntary in-app AI-answer reports. Reports require a reachable, activated delivery service.
 
 Build and validate an internal-testing AAB with `python3 tools/build_play_release.py --internal-test`. Production preparation checks public policy/reporting/Maps-signing setup before building. Never commit `android/key.properties` or `android/upload-keystore.jks`; keep private backups. The public upload certificate is in `store/`. Play App Signing's certificate must be added to the Maps/Places Android API key restrictions before a Play-installed build will authenticate. No publication or Play Console submissions are performed by these scripts.
+
+## App Store release
+
+See [the iOS release guide](store/APP_STORE_RELEASE.md) for archive/export commands, App Store Connect metadata, privacy declarations and review notes. `python3 tools/build_app_store_release.py --unsigned` builds an inspectable archive without uploading. Distribution signing and TestFlight validation require your Apple Developer Program account.

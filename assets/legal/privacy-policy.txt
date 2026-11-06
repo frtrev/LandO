@@ -1,7 +1,7 @@
 LandO Privacy Policy
-Effective November 5, 2026
+Effective November 6, 2026
 
-LandO is a property mapping and planning app. Privacy and support contact: ftrevino@yahoo.com.
+LandO is a property mapping and planning app published by Francisco Trevino under NeoTheOne. Privacy and support contact: ftrevino@yahoo.com.
 
 Your property data
 Property names, descriptions, boundary coordinates, areas, distance measurements, preferences and conversations are stored in the app's private storage on your device. LandO does not operate a property database server or require a LandO account. There are no advertising or developer-operated analytics services in the app. Third-party services below may process their own operational data.
@@ -25,7 +25,7 @@ Backup and sharing
 Export creates a readable file containing your properties, coordinates, conversations and preferences. You decide whether to save it or share it with another app. API keys and downloaded models are excluded. Anyone with the exported file can read its contents. Copies you save or send are managed by you and the services you choose. Review their access and retention settings.
 
 Your choices and deletion
-You can delete individual properties and their conversations, manage conversations, remove stored AI keys in AI settings, remove the local model, disable internet research, revoke location permission, or use Android Settings to clear LandO storage. Uninstalling the Android app removes its private app data. Exported files and data already sent to third-party services are not removed by deleting local app data; delete those copies separately or use the provider's own controls. LandO has no account to delete. Permission to share assistant data must be granted again after a backup is restored.
+You can delete individual properties and their conversations, manage conversations, remove stored AI keys in AI settings, remove the local model, disable internet research, revoke location permission, or use Android Settings to clear LandO storage. Uninstalling the Android app removes its private app data. On iOS, use Delete App rather than Offload App to remove local app files. iOS Keychain entries, including stored AI keys, may survive reinstallation; remove keys in AI settings before deleting the app. Device backups may retain prior app data according to your Apple backup settings. Downloaded model weights are excluded from iCloud device backups. Exported files and data already sent to third-party services are not removed by deleting local app data; delete those copies separately or use the provider's own controls. LandO has no account to delete. Permission to share assistant data must be granted again after a backup is restored.
 
 Security and important limits
 Network services use HTTPS. Device storage protections depend on your operating system and device security; exported backup files are not encrypted by LandO. No method of storage or transmission provides an absolute guarantee. AI answers, prices and map-derived measurements are planning estimates, not legal surveys, verified contractor quotes, appraisals, or guarantees of ownership or permit approval. Confirm important decisions with qualified professionals.

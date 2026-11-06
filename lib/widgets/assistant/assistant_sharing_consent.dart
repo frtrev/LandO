@@ -5,7 +5,7 @@ import '../privacy_policy_page.dart';
 
 abstract final class AssistantSharingConsent {
   static String key(AssistantProvider provider, bool internet) =>
-      'assistantConsent:v1:${provider.name}:${internet ? 'web' : 'offline'}';
+      'assistantConsent:v2:${provider.name}:${internet ? 'web' : 'offline'}';
   static Future<bool> request(
     BuildContext context,
     PropertyRepository repository,
@@ -13,6 +13,9 @@ abstract final class AssistantSharingConsent {
     bool internet,
   ) async {
     final local = provider == AssistantProvider.qwen;
+    final recipient = provider == AssistantProvider.gemini
+        ? 'Google (Gemini API)'
+        : 'OpenAI';
     if (local && !internet) return true;
     final preference = key(provider, internet);
     if (await repository.preference(preference) == 'true') return true;
@@ -31,7 +34,7 @@ abstract final class AssistantSharingConsent {
               Text(
                 local
                     ? 'Your assistant runs on this phone. Internet research sends search queries to DuckDuckGo. Queries may include location or information from your question and conversation.'
-                    : 'Sending shares your question, recent conversation and property data—including possible precise coordinates—with the cloud AI provider you selected in AI settings. That provider processes the information under its account terms.',
+                    : 'Sending shares your question, recent conversation and property data—including possible precise coordinates—with $recipient, a third-party AI service. $recipient processes this information under its account terms.',
               ),
               if (!local && internet)
                 const Padding(
