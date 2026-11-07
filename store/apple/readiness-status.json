@@ -2,7 +2,7 @@
   "checkedAt": "2026-11-06",
   "bundleIdentifier": "app.neotheone.lando",
   "version": "1.0.0",
-  "build": "1",
+  "build": "2",
   "signedArchiveBuilt": true,
   "archiveChecksPassed": true,
   "distributionIPAExported": true,
@@ -18,5 +18,7 @@
   "reportDeliveryVerified": false,
   "iosWebsitePolicyCorrectionPublished": false,
   "distributionIPAVerified": true,
-  "distributionIPAPath": "build/ios/ipa/lando.ipa"
+  "distributionIPAPath": "build/ios/ipa/lando.ipa",
+  "locationPurposeStringsPresent": true,
+  "backgroundLocationEnabled": false
 }

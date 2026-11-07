@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Build and inspect LandO's iOS archive; never uploads or submits the app."""
 import argparse
+import os
 from pathlib import Path
 import re
 import subprocess
@@ -12,12 +13,15 @@ parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--unsigned', action='store_true', help='Compile an archive for inspection without an Apple signing identity; no installable IPA.')
 parser.add_argument('--skip-tests', action='store_true', help='Only after analyze and the test suite passed for these sources.')
 args = parser.parse_args()
+# geolocator's Swift package reads this environment variable when resolving
+# its C compiler settings. The Podfile-only flag does not cover SwiftPM.
+build_environment = {**os.environ, 'BYPASS_PERMISSION_LOCATION_ALWAYS': '1'}
 def run(command):
     if command[0] == 'xcodebuild':
         # Xcode's raw script logs may contain expanded Maps build settings.
         # Keep those logs out of terminal output and show only diagnostics.
         print('Running Xcode '+('export' if '-exportArchive' in command else 'archive')+'...', flush=True)
-        result = subprocess.run(command, cwd=ROOT, capture_output=True, text=True)
+        result = subprocess.run(command, cwd=ROOT, env=build_environment, capture_output=True, text=True)
         for line in (result.stdout+'\n'+result.stderr).splitlines():
             if any(token in line for token in ['error:', '** ARCHIVE', '** EXPORT']):
                 safe = re.sub(r'(AIza[\w-]+|AQ\.[\w-]+|sk-[\w-]+)', '[credential removed]', line)
@@ -25,7 +29,7 @@ def run(command):
         if result.returncode:
             raise SystemExit('Xcode '+('export' if '-exportArchive' in command else 'archive')+' failed. Resolve the diagnostics above; nothing was uploaded.')
         return
-    subprocess.run(command, cwd=ROOT, check=True)
+    subprocess.run(command, cwd=ROOT, env=build_environment, check=True)
 if not args.skip_tests:
     run(['flutter', 'analyze'])
     run(['flutter', 'test'])

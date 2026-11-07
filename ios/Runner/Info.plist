@@ -6,6 +6,8 @@
     <string>$(GOOGLE_MAPS_API_KEY)</string>
     <key>NSLocationWhenInUseUsageDescription</key>
     <string>LandO uses your location to center the map when no property is selected or when you tap My location.</string>
+    <key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+    <string>LandO uses your location to show your position and center the property map when you open Explore or tap My location. LandO uses location only while the app is in use and does not track your location in the background.</string>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>CFBundleDevelopmentRegion</key>

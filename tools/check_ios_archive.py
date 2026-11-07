@@ -25,8 +25,9 @@ def check(archive, require_signature=False):
     assert sorted(info['UIDeviceFamily']) == [1, 2], 'This packet covers iPhone and iPad.'
     assert info.get('ITSAppUsesNonExemptEncryption') is False
     assert info.get('NSLocationWhenInUseUsageDescription')
+    assert info.get('NSLocationAlwaysAndWhenInUseUsageDescription'), 'Include the SDK compatibility purpose string required by App Store validation.'
     assert not info.get('UIBackgroundModes')
-    assert not any(k in info for k in ['NSLocationAlwaysAndWhenInUseUsageDescription', 'NSMicrophoneUsageDescription', 'NSCameraUsageDescription', 'NSUserTrackingUsageDescription'])
+    assert not any(k in info for k in ['NSMicrophoneUsageDescription', 'NSCameraUsageDescription', 'NSUserTrackingUsageDescription'])
     assert not info.get('NSAppTransportSecurity', {}).get('NSAllowsArbitraryLoads', False)
     key = info.get('GoogleMapsAPIKey', '')
     assert key and not key.startswith(('YOUR_', '$(')), 'Configure ios/Flutter/MapsSecrets.xcconfig.'
@@ -53,6 +54,7 @@ def check(archive, require_signature=False):
         arch = subprocess.run(['xcrun', 'lipo', '-archs', str(binary)], capture_output=True, text=True, check=True).stdout.strip()
         assert arch == 'arm64', f'Unexpected archive architecture in {binary.name}: {arch}'
         native.append(binary.name)
+    always_references = [b.name for b in binaries if b.is_file() and b'requestAlwaysAuthorization' in b.read_bytes()]
     signature = subprocess.run(['codesign', '--verify', '--deep', '--strict', str(app)], capture_output=True, text=True)
     signed = signature.returncode == 0
     if require_signature:
@@ -64,6 +66,9 @@ def check(archive, require_signature=False):
         'build': info['CFBundleVersion'], 'sdk': info['DTSDKName'], 'minimumIOS': info['MinimumOSVersion'],
         'devices': ['iPhone', 'iPad'], 'signatureVerified': signed,
         'privacyManifests': manifests, 'nativeArm64Binaries': native, 'debugSymbols': dsym_names,
+        'locationPurposeStringsPresent': True,
+        'backgroundLocationEnabled': False,
+        'alwaysLocationAPIReferences': always_references,
         'note': 'Technical archive checks only. Validate the distribution IPA in Xcode and App Store Connect before submission.',
     }
     output = ROOT/'build/app-store/archive-validation.json'
@@ -83,6 +88,9 @@ def check_export(ipa):
         app = apps[0]
         info = plistlib.loads((app/'Info.plist').read_bytes())
         assert info['CFBundleIdentifier'] == 'app.neotheone.lando'
+        assert info.get('NSLocationWhenInUseUsageDescription')
+        assert info.get('NSLocationAlwaysAndWhenInUseUsageDescription')
+        assert not info.get('UIBackgroundModes')
         subprocess.run(['codesign', '--verify', '--deep', '--strict', str(app)], capture_output=True, check=True)
         signed_entitlements = subprocess.run(['codesign', '-d', '--entitlements', ':-', str(app)], capture_output=True, check=True).stdout
         entitlements = plistlib.loads(signed_entitlements)
@@ -98,6 +106,7 @@ def check_export(ipa):
             'bundleIdentifier': info['CFBundleIdentifier'],
             'version': info['CFBundleShortVersionString'], 'build': info['CFBundleVersion'],
             'distributionSignatureVerified': True, 'appStoreProfile': True,
+            'locationPurposeStringsPresent': True, 'backgroundLocationEnabled': False,
             'team': team, 'profileExpires': profile['ExpirationDate'].isoformat()+'Z',
             'ipaSHA256': hashlib.sha256(ipa.read_bytes()).hexdigest(),
             'note': 'Local verification only; App Store Connect processing/review still required.',
